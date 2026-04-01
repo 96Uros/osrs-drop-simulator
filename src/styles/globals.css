@@ -434,6 +434,50 @@ body {
   background: linear-gradient(180deg, #9ac8ff 0%, #4d84c9 100%);
 }
 
+.loot-tab-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.loot-tab-section--pet-gold {
+  padding: 0.4rem 0.42rem 0.32rem;
+  margin: 0 -0.12rem;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 172, 88, 0.42);
+  background: linear-gradient(
+    180deg,
+    rgba(55, 44, 20, 0.42) 0%,
+    rgba(22, 18, 10, 0.28) 50%,
+    rgba(10, 9, 8, 0.12) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 232, 190, 0.14),
+    0 0 22px rgba(170, 130, 48, 0.1);
+}
+
+.loot-tab-section--pet-gold .loot-tab-title {
+  font-size: 0.96rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  background: linear-gradient(180deg, #fff6e8 0%, #e9c778 52%, #bc8428 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.loot-tab-section--pet-gold .loot-tab-value {
+  border-color: rgba(235, 200, 120, 0.48);
+  background: rgba(38, 30, 14, 0.58);
+  color: #f2d8a0;
+}
+
+.loot-tab-section--pet-gold .results {
+  padding-top: 5px;
+}
+
 .loot-tab-title {
   margin: 0;
   font-size: 0.92rem;
@@ -532,13 +576,32 @@ body {
 }
 
 .drop-card.pet-card {
-  border-color: rgba(255, 184, 87, 0.62);
+  border: 1px solid rgba(255, 210, 125, 0.82);
   background: linear-gradient(
-    180deg,
-    rgba(68, 45, 12, 0.92) 0%,
-    rgba(37, 24, 8, 0.95) 100%
+    145deg,
+    rgba(118, 90, 38, 0.9) 0%,
+    rgba(76, 56, 20, 0.94) 42%,
+    rgba(38, 28, 10, 0.97) 100%
   );
-  box-shadow: inset 0 0 0 1px rgba(255, 219, 148, 0.2);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 236, 200, 0.42),
+    0 0 14px rgba(200, 155, 65, 0.26);
+}
+
+.drop-card.pet-card:hover {
+  border-color: rgba(255, 235, 185, 0.92);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 244, 220, 0.48),
+    0 4px 18px rgba(210, 165, 70, 0.34);
+}
+
+.drop-card.pet-card p {
+  color: #f8efdc;
+}
+
+.drop-card.pet-card strong {
+  color: #ffeb9a;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .drop-card.extreme-rare-card {

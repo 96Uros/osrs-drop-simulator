@@ -76,6 +76,31 @@ function parseQuantityRange(quantity: string | null): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function clampDropRollProbability(rarity: number): number {
+  if (!Number.isFinite(rarity)) return 0;
+  return Math.min(1, Math.max(0, rarity));
+}
+
+function applyDropQuantityToTotals(
+  totals: Map<number, DropResult>,
+  drop: MonsterDrop,
+  amount: number,
+): boolean {
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  const current = totals.get(drop.id);
+  if (current) {
+    current.quantity += amount;
+  } else {
+    totals.set(drop.id, {
+      id: drop.id,
+      name: drop.name,
+      quantity: amount,
+      rarity: drop.rarity,
+    });
+  }
+  return true;
+}
+
 function runDropSimulation(
   drops: MonsterDrop[],
   killCount: number,
@@ -110,6 +135,7 @@ function runDropSimulation(
 
   for (let kill = 0; kill < killCount; kill += 1) {
     let rareDropAlreadyHit = false;
+    let killYieldedLoot = false;
 
     if (raidUniqueModel) {
       expectedRareRolls += raidUniqueModel.uniqueChance;
@@ -122,16 +148,8 @@ function runDropSimulation(
           successfulRareRolls += 1;
           rareDropAlreadyHit = true;
           const amount = parseQuantityRange(uniqueDrop.quantity);
-          const current = totals.get(uniqueDrop.id);
-          if (current) {
-            current.quantity += amount;
-          } else {
-            totals.set(uniqueDrop.id, {
-              id: uniqueDrop.id,
-              name: uniqueDrop.name,
-              quantity: amount,
-              rarity: uniqueDrop.rarity,
-            });
+          if (applyDropQuantityToTotals(totals, uniqueDrop, amount)) {
+            killYieldedLoot = true;
           }
         }
       }
@@ -146,36 +164,51 @@ function runDropSimulation(
         expectedRareRolls += drop.rarity * drop.rolls;
       }
 
+      const rollChance = clampDropRollProbability(drop.rarity);
+
       for (let roll = 0; roll < drop.rolls; roll += 1) {
         if (isRareDrop && rareDropAlreadyHit) {
           continue;
         }
 
-        if (Math.random() <= drop.rarity) {
+        if (Math.random() <= rollChance) {
           if (isRareDrop) {
             successfulRareRolls += 1;
             rareDropAlreadyHit = true;
           }
           const amount = parseQuantityRange(drop.quantity);
-          const current = totals.get(drop.id);
-
-          if (current) {
-            current.quantity += amount;
-          } else {
-            totals.set(drop.id, {
-              id: drop.id,
-              name: drop.name,
-              quantity: amount,
-              rarity: drop.rarity,
-            });
+          if (applyDropQuantityToTotals(totals, drop, amount)) {
+            killYieldedLoot = true;
           }
         }
       }
     }
+
+    // Every kill should drop at least something (OSRS always has loot on a kill).
+    if (!killYieldedLoot && drops.length > 0) {
+      const eligible = drops.filter(
+        (d) => !raidUniqueNames.has(d.name.toLowerCase()),
+      );
+      let pool = eligible.length > 0 ? eligible : drops;
+      const commons = pool.filter((d) => d.rarity > RARE_DROP_THRESHOLD);
+      if (commons.length > 0) {
+        pool = commons;
+      }
+      const fallbackDrop = pool.reduce((best, d) =>
+        clampDropRollProbability(d.rarity) > clampDropRollProbability(best.rarity)
+          ? d
+          : best,
+      );
+      const rawAmount = parseQuantityRange(fallbackDrop.quantity);
+      const amount = Math.max(1, rawAmount);
+      applyDropQuantityToTotals(totals, fallbackDrop, amount);
+    }
   }
 
   return {
-    drops: [...totals.values()].sort((a, b) => b.quantity - a.quantity),
+    drops: [...totals.values()]
+      .filter((d) => d.quantity > 0)
+      .sort((a, b) => b.quantity - a.quantity),
     expectedRareRolls,
     successfulRareRolls,
   };
@@ -780,6 +813,11 @@ function App() {
     }, 0);
   }, [itemIdByName, itemValues, results]);
 
+  const lootTabHasPet = useMemo(
+    () => results.some((drop) => isPetDropName(drop.name)),
+    [results],
+  );
+
   const averageLuckPercent = useMemo(() => {
     if (expectedRareRollsTotal <= 0) return 0;
     return (successfulRareRollsTotal / expectedRareRollsTotal) * 100;
@@ -1244,71 +1282,79 @@ function App() {
 
           {error && <p className="error">{error}</p>}
 
-          <div className="loot-tab-header">
-            <h3 className="loot-tab-title">
-              Loot Tab
-              {selectedMonster
-                ? ` | ${getDisplayMonsterLabel(selectedMonster, encounterFilter)} x${totalKills.toLocaleString("en-US")}`
-                : ""}
-            </h3>
-            <div className="loot-tab-values">
-              <span className="loot-tab-value">
-                Total GP: {formatGp(totalGpValue)}
-              </span>
-              <span className="loot-tab-value">{priceUpdatedLabel}</span>
+          <div
+            className={
+              lootTabHasPet
+                ? "loot-tab-section loot-tab-section--pet-gold"
+                : "loot-tab-section"
+            }
+          >
+            <div className="loot-tab-header">
+              <h3 className="loot-tab-title">
+                Loot Tab
+                {selectedMonster
+                  ? ` | ${getDisplayMonsterLabel(selectedMonster, encounterFilter)} x${totalKills.toLocaleString("en-US")}`
+                  : ""}
+              </h3>
+              <div className="loot-tab-values">
+                <span className="loot-tab-value">
+                  Total GP: {formatGp(totalGpValue)}
+                </span>
+                <span className="loot-tab-value">{priceUpdatedLabel}</span>
+              </div>
             </div>
-          </div>
-          <div className="results">
-            {results.length === 0 ? (
-              <p className="empty">No results yet. Run a simulation.</p>
-            ) : (
-              results.map((drop) => (
-                <div
-                  className={`drop-card ${getDropCardClass(drop)}`}
-                  key={drop.id}
-                >
-                  {(() => {
-                    const resolvedId = getResolvedItemId(drop, itemIdByName);
-                    const iconDrop: DropResult = { ...drop, id: resolvedId };
-                    return (
-                      <img
-                        src={getIconCandidates(iconDrop)[0]}
-                        alt={drop.name}
-                        loading="lazy"
-                        onError={(event) => {
-                          const image = event.currentTarget;
-                          const candidates = getIconCandidates(iconDrop);
-                          const currentStep = Number.parseInt(
-                            image.dataset.fallbackStep ?? "0",
-                            10,
-                          );
-                          const nextStep = Number.isFinite(currentStep)
-                            ? currentStep + 1
-                            : 1;
-                          image.dataset.fallbackStep = String(nextStep);
-                          image.src =
-                            candidates[
-                              Math.min(nextStep, candidates.length - 1)
-                            ];
-                        }}
-                      />
-                    );
-                  })()}
-                  <p>{drop.name}</p>
-                  <strong className={getQuantityTierClass(drop.quantity)}>
-                    x{drop.quantity.toLocaleString("en-US")}
-                  </strong>
-                  {!isCoinsDrop(drop.name) && (
-                    <span className="drop-card-gp">
-                      {formatGp(
-                        getDropUnitValue(drop, itemIdByName, itemValues) *
-                          drop.quantity,
-                      )}
-                    </span>
-                  )}
-                </div>
-              ))
-            )}
+            <div className="results">
+              {results.length === 0 ? (
+                <p className="empty">No results yet. Run a simulation.</p>
+              ) : (
+                results.map((drop) => (
+                  <div
+                    className={`drop-card ${getDropCardClass(drop)}`}
+                    key={drop.id}
+                  >
+                    {(() => {
+                      const resolvedId = getResolvedItemId(drop, itemIdByName);
+                      const iconDrop: DropResult = { ...drop, id: resolvedId };
+                      return (
+                        <img
+                          src={getIconCandidates(iconDrop)[0]}
+                          alt={drop.name}
+                          loading="lazy"
+                          onError={(event) => {
+                            const image = event.currentTarget;
+                            const candidates = getIconCandidates(iconDrop);
+                            const currentStep = Number.parseInt(
+                              image.dataset.fallbackStep ?? "0",
+                              10,
+                            );
+                            const nextStep = Number.isFinite(currentStep)
+                              ? currentStep + 1
+                              : 1;
+                            image.dataset.fallbackStep = String(nextStep);
+                            image.src =
+                              candidates[
+                                Math.min(nextStep, candidates.length - 1)
+                              ];
+                          }}
+                        />
+                      );
+                    })()}
+                    <p>{drop.name}</p>
+                    <strong className={getQuantityTierClass(drop.quantity)}>
+                      x{drop.quantity.toLocaleString("en-US")}
+                    </strong>
+                    {!isCoinsDrop(drop.name) && (
+                      <span className="drop-card-gp">
+                        {formatGp(
+                          getDropUnitValue(drop, itemIdByName, itemValues) *
+                            drop.quantity,
+                        )}
+                      </span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>
