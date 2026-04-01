@@ -129,13 +129,20 @@ body {
 
 .controls-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 170px minmax(0, 1fr);
   gap: 0.38rem 0.55rem;
+  align-items: center;
 }
 
 .controls label {
   font-size: 0.82rem;
   color: #cfcfcf;
+  line-height: 1.2;
+}
+
+.controls-fields input,
+.controls-fields select {
+  width: 100%;
 }
 
 .controls input,

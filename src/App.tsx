@@ -1,5 +1,5 @@
 import "./styles/globals.css";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AccountStatsStore,
   DropResult,
@@ -528,7 +528,7 @@ function App() {
     useState<EncounterFilter>("all");
   const [monsterQuery, setMonsterQuery] = useState("");
   const [itemSearchQuery, setItemSearchQuery] = useState("");
-  const [killCountInput, setKillCountInput] = useState("100");
+  const [killCountInput, setKillCountInput] = useState("1");
   const [autoKillEnabled, setAutoKillEnabled] = useState(false);
   const [coxPointsInput, setCoxPointsInput] = useState("30000");
   const [toaLevelInput, setToaLevelInput] = useState("300");
@@ -658,8 +658,7 @@ function App() {
 
   useEffect(() => {
     if (!selectedMonster) return;
-    const isRaid = getEncounterType(selectedMonster) === "raids";
-    setKillCountInput(isRaid ? "1" : "100");
+    setKillCountInput("1");
   }, [selectedMonster]);
 
   const filteredMonsters = useMemo(() => {
@@ -710,6 +709,7 @@ function App() {
   }, [luckHistory]);
 
   const priceUpdatedLabel = useMemo(() => {
+    void priceTick;
     if (!lastPriceUpdateAt) return "Prices updating...";
     const elapsedSec = Math.max(
       0,
@@ -720,41 +720,53 @@ function App() {
     return `Prices updated ${elapsedMin}m ago`;
   }, [lastPriceUpdateAt, priceTick]);
 
-  const applyBatch = (kills: number) => {
-    if (!selectedMonster) return;
-    const mode = getModeFromFilter(encounterFilter);
-    const modeDrops = getDropsForMode(selectedMonster, mode);
-    const raidUniqueModel = getRaidUniqueModel(
-      selectedMonster,
-      mode,
-      clampNumber(
-        Number.parseInt(coxPointsInput, 10) || 30_000,
-        1_000,
-        200_000,
-      ),
-      clampNumber(Number.parseInt(toaLevelInput, 10) || 300, 0, 700),
-      clampNumber(Number.parseInt(tobTeamSizeInput, 10) || 4, 1, 5),
-      tobDeathless,
-    );
-    const batch = runDropSimulation(modeDrops, kills, raidUniqueModel);
-    setResults((previous) => mergeDropResults(previous, batch.drops));
-    setTotalKills((previous) => previous + kills);
-    setExpectedRareRollsTotal((previous) => previous + batch.expectedRareRolls);
-    setSuccessfulRareRollsTotal(
-      (previous) => previous + batch.successfulRareRolls,
-    );
+  const applyBatch = useCallback(
+    (kills: number) => {
+      if (!selectedMonster) return;
+      const mode = getModeFromFilter(encounterFilter);
+      const modeDrops = getDropsForMode(selectedMonster, mode);
+      const raidUniqueModel = getRaidUniqueModel(
+        selectedMonster,
+        mode,
+        clampNumber(
+          Number.parseInt(coxPointsInput, 10) || 30_000,
+          1_000,
+          200_000,
+        ),
+        clampNumber(Number.parseInt(toaLevelInput, 10) || 300, 0, 700),
+        clampNumber(Number.parseInt(tobTeamSizeInput, 10) || 4, 1, 5),
+        tobDeathless,
+      );
+      const batch = runDropSimulation(modeDrops, kills, raidUniqueModel);
+      setResults((previous) => mergeDropResults(previous, batch.drops));
+      setTotalKills((previous) => previous + kills);
+      setExpectedRareRollsTotal(
+        (previous) => previous + batch.expectedRareRolls,
+      );
+      setSuccessfulRareRollsTotal(
+        (previous) => previous + batch.successfulRareRolls,
+      );
 
-    const luckPercent =
-      batch.expectedRareRolls > 0
-        ? (batch.successfulRareRolls / batch.expectedRareRolls) * 100
-        : 0;
-    setLuckHistory((previous) => {
-      const nextId =
-        previous.length === 0 ? 1 : previous[previous.length - 1].id + 1;
-      const next = [...previous, { id: nextId, luckPercent }];
-      return next.slice(-30);
-    });
-  };
+      const luckPercent =
+        batch.expectedRareRolls > 0
+          ? (batch.successfulRareRolls / batch.expectedRareRolls) * 100
+          : 0;
+      setLuckHistory((previous) => {
+        const nextId =
+          previous.length === 0 ? 1 : previous[previous.length - 1].id + 1;
+        const next = [...previous, { id: nextId, luckPercent }];
+        return next.slice(-30);
+      });
+    },
+    [
+      coxPointsInput,
+      encounterFilter,
+      selectedMonster,
+      toaLevelInput,
+      tobDeathless,
+      tobTeamSizeInput,
+    ],
+  );
 
   const handleManualKill = () => {
     const kills = Number.parseInt(killCountInput, 10);
@@ -795,7 +807,7 @@ function App() {
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [autoKillEnabled, encounterFilter, killCountInput, selectedMonster]);
+  }, [applyBatch, autoKillEnabled, killCountInput, selectedMonster]);
 
   useEffect(() => {
     const missingIds = results
@@ -866,7 +878,7 @@ function App() {
     const accountStore = loadAccountStore();
     const stats = accountStore[String(selectedMonster.id)];
     setLifetimeKills(stats?.totalKills ?? 0);
-  }, [selectedMonsterId]);
+  }, [selectedMonster]);
 
   useEffect(() => {
     if (!selectedMonster) return;
@@ -885,17 +897,17 @@ function App() {
       <div className="panel">
         <a
           className="kofi-float"
-          href="https://ko-fi.com/"
+          href="https://ko-fi.com/S6S61X1T35"
           target="_blank"
           rel="noreferrer"
-          aria-label="Support on Ko-fi"
-          title="Support on Ko-fi"
+          aria-label="Support project on Ko-fi"
+          title="Support project on Ko-fi"
         >
           <span className="kofi-title">Ko-fi</span>
-          <span className="kofi-subtitle">Support the project</span>
+          <span className="kofi-subtitle">Support project on Ko-fi</span>
         </a>
         <div className="panel-header">
-          <h1>OSRS Boss Drop Simulator</h1>
+          <h1>OSRS Drop Simulator</h1>
           <p>Pick a boss, set kills, roll loot tab, and track your RNG.</p>
         </div>
 
