@@ -20,14 +20,16 @@ export const EXTREME_RARE_THRESHOLD = 0.001;
 export const MAX_KILL_INPUT = 15_000;
 
 export const CUSTOM_ITEM_PRICES: Record<string, number> = {
-  "Magma Vestige": 68_000_000,
-  "Eye of the Duke": 22_000_000,
-  "Ultor Vestige": 120_000_000,
+  "Magus vestige": 68_000_000,
+  "Eye of the duke": 22_000_000,
+  "Ultor vestige": 120_000_000,
+  "Bellator vestige": 58_000_000,
+  "Venator vestige": 36_000_000,
   "Executioner's axe head": 24_000_000,
-  "Bellator Vestige": 58_000_000,
   "Siren's staff": 21_000_000,
-  "Venator Vestige": 36_000_000,
   "Leviathan's lure": 19_000_000,
+  "Chromium ingot": 54_000,
+  "Awakener's orb": 370_000,
 };
 
 export const FALLBACK_ICON =

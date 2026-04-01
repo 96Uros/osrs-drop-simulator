@@ -29,6 +29,11 @@ import {
 } from "./app/constants";
 import { CUSTOM_ENCOUNTERS } from "./app/custom-encounters";
 
+type RaidUniqueModel = {
+  uniqueChance: number;
+  uniqueWeights: Array<{ name: string; weight: number }>;
+};
+
 function parseQuantityRange(quantity: string | null): number {
   if (!quantity) return 1;
 
@@ -48,21 +53,82 @@ function parseQuantityRange(quantity: string | null): number {
 function runDropSimulation(
   drops: MonsterDrop[],
   killCount: number,
+  raidUniqueModel?: RaidUniqueModel | null,
 ): SimulationBatch {
   const totals = new Map<number, DropResult>();
   let successfulRareRolls = 0;
   let expectedRareRolls = 0;
+  const raidUniqueNames = new Set(
+    (raidUniqueModel?.uniqueWeights ?? []).map((item) =>
+      item.name.toLowerCase(),
+    ),
+  );
+
+  const pickRaidUnique = (): string | null => {
+    if (!raidUniqueModel || raidUniqueModel.uniqueWeights.length === 0)
+      return null;
+    const totalWeight = raidUniqueModel.uniqueWeights.reduce(
+      (sum, item) => sum + item.weight,
+      0,
+    );
+    if (totalWeight <= 0) return null;
+    let target = Math.random() * totalWeight;
+    for (const item of raidUniqueModel.uniqueWeights) {
+      target -= item.weight;
+      if (target <= 0) return item.name;
+    }
+    return raidUniqueModel.uniqueWeights[
+      raidUniqueModel.uniqueWeights.length - 1
+    ].name;
+  };
 
   for (let kill = 0; kill < killCount; kill += 1) {
+    let rareDropAlreadyHit = false;
+
+    if (raidUniqueModel) {
+      expectedRareRolls += raidUniqueModel.uniqueChance;
+      if (Math.random() <= raidUniqueModel.uniqueChance) {
+        const uniqueName = pickRaidUnique();
+        const uniqueDrop = drops.find(
+          (drop) => drop.name.toLowerCase() === uniqueName?.toLowerCase(),
+        );
+        if (uniqueDrop) {
+          successfulRareRolls += 1;
+          rareDropAlreadyHit = true;
+          const amount = parseQuantityRange(uniqueDrop.quantity);
+          const current = totals.get(uniqueDrop.id);
+          if (current) {
+            current.quantity += amount;
+          } else {
+            totals.set(uniqueDrop.id, {
+              id: uniqueDrop.id,
+              name: uniqueDrop.name,
+              quantity: amount,
+              rarity: uniqueDrop.rarity,
+            });
+          }
+        }
+      }
+    }
+
     for (const drop of drops) {
+      if (raidUniqueNames.has(drop.name.toLowerCase())) {
+        continue;
+      }
       const isRareDrop = drop.rarity <= RARE_DROP_THRESHOLD;
       if (isRareDrop) {
         expectedRareRolls += drop.rarity * drop.rolls;
       }
+
       for (let roll = 0; roll < drop.rolls; roll += 1) {
+        if (isRareDrop && rareDropAlreadyHit) {
+          continue;
+        }
+
         if (Math.random() <= drop.rarity) {
           if (isRareDrop) {
             successfulRareRolls += 1;
+            rareDropAlreadyHit = true;
           }
           const amount = parseQuantityRange(drop.quantity);
           const current = totals.get(drop.id);
@@ -210,6 +276,10 @@ function getDropCardClass(drop: DropResult): string {
   return "";
 }
 
+function isCoinsDrop(name: string): boolean {
+  return normalizeItemName(name) === "coins";
+}
+
 function getWikiItemImageUrl(itemName: string): string {
   const normalized = itemName.trim().replace(/\s+/g, "_");
   return `${WIKI_IMAGE_BASE_URL}/${encodeURIComponent(normalized)}_detail.png`;
@@ -231,24 +301,31 @@ function getDropUnitValue(
 ): number {
   const resolvedId = getResolvedItemId(drop, itemIdByName);
   const resolvedById = itemValues[resolvedId];
-  if (typeof resolvedById === "number") return resolvedById;
+  if (typeof resolvedById === "number" && resolvedById > 0) return resolvedById;
 
   const byName = CUSTOM_ITEM_PRICES[drop.name];
-  if (typeof byName === "number") return byName;
+  if (typeof byName === "number" && byName > 0) return byName;
 
   const normalized = normalizeItemName(drop.name);
   const nameMatch = Object.entries(CUSTOM_ITEM_PRICES).find(
     ([name]) => normalizeItemName(name) === normalized,
   );
-  return nameMatch?.[1] ?? 0;
+  if (nameMatch && typeof nameMatch[1] === "number" && nameMatch[1] > 0) {
+    return nameMatch[1];
+  }
+
+  if (typeof resolvedById === "number") return resolvedById;
+  return 0;
 }
 
 function getResolvedItemId(
   drop: DropResult,
   itemIdByName: Record<string, number>,
 ): number {
+  const mappedId = itemIdByName[normalizeItemName(drop.name)];
+  if (typeof mappedId === "number" && mappedId > 0) return mappedId;
   if (drop.id > 0) return drop.id;
-  return itemIdByName[normalizeItemName(drop.name)] ?? drop.id;
+  return drop.id;
 }
 
 function getIconCandidates(drop: DropResult): string[] {
@@ -299,6 +376,86 @@ function getDropsForMode(monster: Monster, mode: EncounterMode): MonsterDrop[] {
       rarity: Math.min(1, drop.rarity * uniqueBoost),
     };
   });
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getRaidUniqueModel(
+  monster: Monster,
+  mode: EncounterMode,
+  coxPoints: number,
+  toaLevel: number,
+  tobTeamSize: number,
+  tobDeathless: boolean,
+): RaidUniqueModel | null {
+  if (monster.id === -2001) {
+    const uniqueChance =
+      clampNumber(coxPoints / 867_500, 0, 0.65) * (mode === "hard" ? 1.1 : 1);
+    return {
+      uniqueChance: clampNumber(uniqueChance, 0, 0.75),
+      uniqueWeights: [
+        { name: "Dexterous prayer scroll", weight: 20 },
+        { name: "Arcane prayer scroll", weight: 20 },
+        { name: "Kodai insignia", weight: 4 },
+        { name: "Dragon hunter crossbow", weight: 8 },
+        { name: "Dinh's bulwark", weight: 6 },
+        { name: "Ancestral hat", weight: 6 },
+        { name: "Ancestral robe top", weight: 6 },
+        { name: "Ancestral robe bottom", weight: 6 },
+        { name: "Dragon claws", weight: 6 },
+        { name: "Elder maul", weight: 4 },
+        { name: "Twisted bow", weight: 4 },
+        { name: "Twisted buckler", weight: 8 },
+      ],
+    };
+  }
+
+  if (monster.id === -2002) {
+    const teamModifier = 1 + (clampNumber(tobTeamSize, 1, 5) - 1) * 0.12;
+    const deathlessModifier = tobDeathless ? 1.12 : 1;
+    const hardModifier = mode === "hard" ? 1.15 : 1;
+    const uniqueChance = clampNumber(
+      (1 / 9) * teamModifier * deathlessModifier * hardModifier,
+      0,
+      0.45,
+    );
+    return {
+      uniqueChance,
+      uniqueWeights: [
+        { name: "Scythe of vitur (uncharged)", weight: 3.2 },
+        { name: "Ghrazi rapier", weight: 4 },
+        { name: "Sanguinesti staff (uncharged)", weight: 4 },
+        { name: "Avernic defender hilt", weight: 6 },
+        { name: "Justiciar faceguard", weight: 3.3 },
+        { name: "Justiciar chestguard", weight: 3.3 },
+        { name: "Justiciar legguards", weight: 3.3 },
+      ],
+    };
+  }
+
+  if (monster.id === -2003) {
+    const uniqueChance = clampNumber(
+      ((toaLevel + 5) / 3500) * (mode === "hard" ? 1.12 : 1),
+      0.005,
+      0.55,
+    );
+    return {
+      uniqueChance,
+      uniqueWeights: [
+        { name: "Osmumten's fang", weight: 7 },
+        { name: "Tumeken's shadow", weight: 1 },
+        { name: "Elidinis' ward", weight: 3 },
+        { name: "Lightbearer", weight: 7 },
+        { name: "Masori mask", weight: 2 },
+        { name: "Masori body", weight: 2 },
+        { name: "Masori chaps", weight: 2 },
+      ],
+    };
+  }
+
+  return null;
 }
 
 function calculatePerKillChance(rarity: number, rolls: number): number {
@@ -373,6 +530,10 @@ function App() {
   const [itemSearchQuery, setItemSearchQuery] = useState("");
   const [killCountInput, setKillCountInput] = useState("100");
   const [autoKillEnabled, setAutoKillEnabled] = useState(false);
+  const [coxPointsInput, setCoxPointsInput] = useState("30000");
+  const [toaLevelInput, setToaLevelInput] = useState("300");
+  const [tobTeamSizeInput, setTobTeamSizeInput] = useState("4");
+  const [tobDeathless, setTobDeathless] = useState(true);
   const [results, setResults] = useState<DropResult[]>([]);
   const [totalKills, setTotalKills] = useState(0);
   const [lifetimeKills, setLifetimeKills] = useState(0);
@@ -381,6 +542,10 @@ function App() {
   const [expectedRareRollsTotal, setExpectedRareRollsTotal] = useState(0);
   const [successfulRareRollsTotal, setSuccessfulRareRollsTotal] = useState(0);
   const [luckHistory, setLuckHistory] = useState<LuckPoint[]>([]);
+  const [lastPriceUpdateAt, setLastPriceUpdateAt] = useState<number | null>(
+    null,
+  );
+  const [priceTick, setPriceTick] = useState(0);
   const [isLoadingMonsters, setIsLoadingMonsters] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const inFlightItemValues = useRef<Set<number>>(new Set());
@@ -429,7 +594,10 @@ function App() {
     void fetch(WIKI_MAPPING_URL)
       .then(async (response) => {
         if (!response.ok) return null;
-        const data = (await response.json()) as Array<{ id: number; name: string }>;
+        const data = (await response.json()) as Array<{
+          id: number;
+          name: string;
+        }>;
         const byName: Record<string, number> = {};
         for (const row of data) {
           if (!row?.id || !row?.name) continue;
@@ -441,10 +609,58 @@ function App() {
       .catch(() => null);
   }, []);
 
+  useEffect(() => {
+    // Load live GE prices in one request and refresh every 60 seconds.
+    const fetchAllPrices = () =>
+      fetch(WIKI_LATEST_PRICE_URL)
+        .then(async (response) => {
+          if (!response.ok) return null;
+          const data = (await response.json()) as {
+            data?: Record<string, { high?: number; low?: number }>;
+          };
+          const nextValues: Record<number, number> = {};
+          for (const [id, value] of Object.entries(data.data ?? {})) {
+            const numericId = Number.parseInt(id, 10);
+            if (!Number.isFinite(numericId)) continue;
+            const resolved = value.high ?? value.low ?? 0;
+            nextValues[numericId] = resolved;
+          }
+          // Keep latest live prices authoritative over stale cached zeros.
+          setItemValues((previous) => ({ ...previous, ...nextValues }));
+          setLastPriceUpdateAt(Date.now());
+          return null;
+        })
+        .catch(() => null);
+
+    void fetchAllPrices();
+    const interval = window.setInterval(() => {
+      void fetchAllPrices();
+    }, 60_000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setPriceTick((previous) => previous + 1);
+    }, 1_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const selectedMonster = useMemo(
     () => monsters.find((monster) => String(monster.id) === selectedMonsterId),
     [monsters, selectedMonsterId],
   );
+  const selectedMonsterLabel = useMemo(() => {
+    if (!selectedMonster) return "";
+    return getDisplayMonsterLabel(selectedMonster, encounterFilter);
+  }, [encounterFilter, selectedMonster]);
+
+  useEffect(() => {
+    if (!selectedMonster) return;
+    const isRaid = getEncounterType(selectedMonster) === "raids";
+    setKillCountInput(isRaid ? "1" : "100");
+  }, [selectedMonster]);
 
   const filteredMonsters = useMemo(() => {
     const baseType = getFilterBaseType(encounterFilter);
@@ -488,13 +704,39 @@ function App() {
     return "Average luck";
   }, [averageLuckPercent, expectedRareRollsTotal, totalKills]);
 
+  const latestLuckPercent = useMemo(() => {
+    if (luckHistory.length === 0) return 0;
+    return luckHistory[luckHistory.length - 1].luckPercent;
+  }, [luckHistory]);
+
+  const priceUpdatedLabel = useMemo(() => {
+    if (!lastPriceUpdateAt) return "Prices updating...";
+    const elapsedSec = Math.max(
+      0,
+      Math.floor((Date.now() - lastPriceUpdateAt) / 1000),
+    );
+    if (elapsedSec < 60) return `Prices updated ${elapsedSec}s ago`;
+    const elapsedMin = Math.floor(elapsedSec / 60);
+    return `Prices updated ${elapsedMin}m ago`;
+  }, [lastPriceUpdateAt, priceTick]);
+
   const applyBatch = (kills: number) => {
     if (!selectedMonster) return;
-    const modeDrops = getDropsForMode(
+    const mode = getModeFromFilter(encounterFilter);
+    const modeDrops = getDropsForMode(selectedMonster, mode);
+    const raidUniqueModel = getRaidUniqueModel(
       selectedMonster,
-      getModeFromFilter(encounterFilter),
+      mode,
+      clampNumber(
+        Number.parseInt(coxPointsInput, 10) || 30_000,
+        1_000,
+        200_000,
+      ),
+      clampNumber(Number.parseInt(toaLevelInput, 10) || 300, 0, 700),
+      clampNumber(Number.parseInt(tobTeamSizeInput, 10) || 4, 1, 5),
+      tobDeathless,
     );
-    const batch = runDropSimulation(modeDrops, kills);
+    const batch = runDropSimulation(modeDrops, kills, raidUniqueModel);
     setResults((previous) => mergeDropResults(previous, batch.drops));
     setTotalKills((previous) => previous + kills);
     setExpectedRareRollsTotal((previous) => previous + batch.expectedRareRolls);
@@ -647,69 +889,175 @@ function App() {
         </div>
 
         <div className="controls">
-          <label htmlFor="encounter-filter">Encounter Type</label>
-          <select
-            id="encounter-filter"
-            value={encounterFilter}
-            onChange={(event) =>
-              setEncounterFilter(event.target.value as EncounterFilter)
-            }
-          >
-            <option value="all">All</option>
-            <option value="bosses">Bosses</option>
-            <option value="raids">Raids</option>
-            <option value="raids-hard">Raids (Hard)</option>
-            <option value="dt2">DT2 Bosses</option>
-            <option value="dt2-hard">DT2 Bosses (Hard)</option>
-          </select>
+          <div className="controls-rng">
+            <div className="rng-row">
+              <span>
+                Rare luck vs average player (
+                {`<=${Math.round(RARE_DROP_THRESHOLD * 100)}% drop chance`})
+              </span>
+              <strong>{averageLuckPercent.toFixed(1)}% vs 100%</strong>
+            </div>
+            <div className="rng-row">
+              <span>Luck graph (%)</span>
+              <strong>Latest: {latestLuckPercent.toFixed(1)}%</strong>
+            </div>
+            <div className="rng-chart">
+              {luckHistory.length === 0 ? (
+                <p className="empty">
+                  RNG distribution appears after your first kill batch.
+                </p>
+              ) : (
+                luckHistory.map((point) => (
+                  <div
+                    key={point.id}
+                    className="rng-bar"
+                    style={{
+                      height: `${Math.min(100, Math.max(6, point.luckPercent / 2))}%`,
+                    }}
+                    title={`${point.luckPercent.toFixed(1)}%`}
+                  />
+                ))
+              )}
+            </div>
+          </div>
 
-          <label htmlFor="monster">Monster/Raid or Boss</label>
-          <input
-            id="monster"
-            type="text"
-            list="monster-options"
-            value={monsterQuery}
-            onChange={(event) => {
-              const value = event.target.value;
-              setMonsterQuery(value);
-
-              const exactMatch = monsters.find(
-                (monster) =>
-                  getDisplayMonsterLabel(monster, encounterFilter).toLowerCase() ===
-                  value.toLowerCase(),
-              );
-              setSelectedMonsterId(exactMatch ? String(exactMatch.id) : "");
-            }}
-            placeholder="Select or type a boss/raid..."
-            disabled={isLoadingMonsters}
-          />
-          <datalist id="monster-options">
-            {filteredMonsters.map((monster) => (
-              <option
-                key={monster.id}
-                value={getDisplayMonsterLabel(monster, encounterFilter)}
-              />
-            ))}
-          </datalist>
-
-          <label htmlFor="kills">Kills and Raids count</label>
-          <input
-            id="kills"
-            type="number"
-            min={1}
-            max={MAX_KILL_INPUT}
-            value={killCountInput}
-            onChange={(event) => {
-              const value = event.target.value;
-              const parsed = Number.parseInt(value, 10);
-              if (Number.isFinite(parsed) && parsed > MAX_KILL_INPUT) {
-                setKillCountInput(String(MAX_KILL_INPUT));
-                return;
+          <div className="controls-fields">
+            <label htmlFor="encounter-filter">Encounter Type</label>
+            <select
+              id="encounter-filter"
+              value={encounterFilter}
+              onChange={(event) =>
+                setEncounterFilter(event.target.value as EncounterFilter)
               }
-              setKillCountInput(value);
-            }}
-            placeholder="e.g. 500"
-          />
+            >
+              <option value="all">All</option>
+              <option value="bosses">Bosses</option>
+              <option value="raids">Raids</option>
+              <option value="raids-hard">Raids (Hard)</option>
+              <option value="dt2">DT2 Bosses</option>
+              <option value="dt2-hard">DT2 Bosses (Hard)</option>
+            </select>
+
+            <label htmlFor="monster">Monster/Raid or Boss</label>
+            <input
+              id="monster"
+              type="text"
+              list="monster-options"
+              value={monsterQuery}
+              onFocus={() => {
+                // If a boss is already selected, clear query on focus so full list shows.
+                if (
+                  selectedMonster &&
+                  monsterQuery.trim().toLowerCase() ===
+                    selectedMonsterLabel.trim().toLowerCase()
+                ) {
+                  setMonsterQuery("");
+                }
+              }}
+              onChange={(event) => {
+                const value = event.target.value;
+                setMonsterQuery(value);
+
+                const exactMatch = monsters.find(
+                  (monster) =>
+                    getDisplayMonsterLabel(
+                      monster,
+                      encounterFilter,
+                    ).toLowerCase() === value.toLowerCase(),
+                );
+                setSelectedMonsterId(exactMatch ? String(exactMatch.id) : "");
+              }}
+              placeholder="Select or type a boss/raid..."
+              disabled={isLoadingMonsters}
+            />
+            <datalist id="monster-options">
+              {filteredMonsters.map((monster) => (
+                <option
+                  key={monster.id}
+                  value={getDisplayMonsterLabel(monster, encounterFilter)}
+                />
+              ))}
+            </datalist>
+
+            <label htmlFor="kills">Kills and Raids count</label>
+            <input
+              id="kills"
+              type="number"
+              min={1}
+              max={MAX_KILL_INPUT}
+              value={killCountInput}
+              onChange={(event) => {
+                const value = event.target.value;
+                const parsed = Number.parseInt(value, 10);
+                if (Number.isFinite(parsed) && parsed > MAX_KILL_INPUT) {
+                  setKillCountInput(String(MAX_KILL_INPUT));
+                  return;
+                }
+                setKillCountInput(value);
+              }}
+              placeholder="e.g. 500"
+            />
+
+            {selectedMonster && getEncounterType(selectedMonster) === "raids" && (
+              <>
+                {selectedMonster.id === -2001 && (
+                  <>
+                    <label htmlFor="cox-points">CoX points</label>
+                    <input
+                      id="cox-points"
+                      type="number"
+                      min={1000}
+                      max={200000}
+                      value={coxPointsInput}
+                      onChange={(event) => setCoxPointsInput(event.target.value)}
+                      placeholder="e.g. 30000"
+                    />
+                  </>
+                )}
+                {selectedMonster.id === -2003 && (
+                  <>
+                    <label htmlFor="toa-level">ToA raid level</label>
+                    <input
+                      id="toa-level"
+                      type="number"
+                      min={0}
+                      max={700}
+                      value={toaLevelInput}
+                      onChange={(event) => setToaLevelInput(event.target.value)}
+                      placeholder="e.g. 300"
+                    />
+                  </>
+                )}
+                {selectedMonster.id === -2002 && (
+                  <>
+                    <label htmlFor="tob-team-size">ToB team size</label>
+                    <input
+                      id="tob-team-size"
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={tobTeamSizeInput}
+                      onChange={(event) =>
+                        setTobTeamSizeInput(event.target.value)
+                      }
+                      placeholder="e.g. 4"
+                    />
+                    <label htmlFor="tob-deathless">ToB deathless run</label>
+                    <select
+                      id="tob-deathless"
+                      value={tobDeathless ? "yes" : "no"}
+                      onChange={(event) =>
+                        setTobDeathless(event.target.value === "yes")
+                      }
+                    >
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </>
+                )}
+              </>
+            )}
+          </div>
 
           <div className="controls-actions">
             <button
@@ -802,46 +1150,24 @@ function App() {
               : "No monster selected"}
           </span>
           <span>Killed: {totalKills.toLocaleString("en-US")}</span>
-          <span>
-            Account kills:{" "}
-            {(lifetimeKills + totalKills).toLocaleString("en-US")}
-          </span>
           <span>{results.length} unique drops</span>
           <span>Rare luck: {averageLuckPercent.toFixed(1)}%</span>
           {dryLevel && <span className="dry-indicator">{dryLevel}</span>}
         </div>
 
-        <div className="rng-panel">
-          <div className="rng-row">
-            <span>
-              Rare luck vs average player (
-              {`<=${Math.round(RARE_DROP_THRESHOLD * 100)}% drop chance`})
-            </span>
-            <strong>{averageLuckPercent.toFixed(1)}% vs 100%</strong>
-          </div>
-          <div className="rng-chart">
-            {luckHistory.length === 0 ? (
-              <p className="empty">
-                RNG distribution appears after your first kill batch.
-              </p>
-            ) : (
-              luckHistory.map((point) => (
-                <div
-                  key={point.id}
-                  className="rng-bar"
-                  style={{
-                    height: `${Math.min(100, Math.max(6, point.luckPercent / 2))}%`,
-                  }}
-                  title={`${point.luckPercent.toFixed(1)}%`}
-                />
-              ))
-            )}
-          </div>
-        </div>
-
         <div className="loot-tab-header">
-          <h3 className="loot-tab-title">Loot Tab</h3>
-          <span className="loot-tab-value">Total GP: {formatGp(totalGpValue)}</span>
+          <h3 className="loot-tab-title">
+            Loot Tab
+            {selectedMonster
+              ? ` | ${getDisplayMonsterLabel(selectedMonster, encounterFilter)} x${totalKills.toLocaleString("en-US")}`
+              : ""}
+          </h3>
+          <div className="loot-tab-values">
+            <span className="loot-tab-value">
+              Total GP: {formatGp(totalGpValue)}
+            </span>
+            <span className="loot-tab-value">{priceUpdatedLabel}</span>
+          </div>
         </div>
         <div className="results">
           {results.length === 0 ? (
@@ -856,37 +1182,39 @@ function App() {
                   const resolvedId = getResolvedItemId(drop, itemIdByName);
                   const iconDrop: DropResult = { ...drop, id: resolvedId };
                   return (
-                <img
-                  src={getIconCandidates(iconDrop)[0]}
-                  alt={drop.name}
-                  loading="lazy"
-                  onError={(event) => {
-                    const image = event.currentTarget;
-                    const candidates = getIconCandidates(iconDrop);
-                    const currentStep = Number.parseInt(
-                      image.dataset.fallbackStep ?? "0",
-                      10,
-                    );
-                    const nextStep = Number.isFinite(currentStep)
-                      ? currentStep + 1
-                      : 1;
-                    image.dataset.fallbackStep = String(nextStep);
-                    image.src =
-                      candidates[Math.min(nextStep, candidates.length - 1)];
-                  }}
-                />
+                    <img
+                      src={getIconCandidates(iconDrop)[0]}
+                      alt={drop.name}
+                      loading="lazy"
+                      onError={(event) => {
+                        const image = event.currentTarget;
+                        const candidates = getIconCandidates(iconDrop);
+                        const currentStep = Number.parseInt(
+                          image.dataset.fallbackStep ?? "0",
+                          10,
+                        );
+                        const nextStep = Number.isFinite(currentStep)
+                          ? currentStep + 1
+                          : 1;
+                        image.dataset.fallbackStep = String(nextStep);
+                        image.src =
+                          candidates[Math.min(nextStep, candidates.length - 1)];
+                      }}
+                    />
                   );
                 })()}
                 <p>{drop.name}</p>
                 <strong className={getQuantityTierClass(drop.quantity)}>
                   x{drop.quantity.toLocaleString("en-US")}
                 </strong>
-                <span className="drop-card-gp">
-                  {formatGp(
-                    getDropUnitValue(drop, itemIdByName, itemValues) *
-                      drop.quantity,
-                  )}
-                </span>
+                {!isCoinsDrop(drop.name) && (
+                  <span className="drop-card-gp">
+                    {formatGp(
+                      getDropUnitValue(drop, itemIdByName, itemValues) *
+                        drop.quantity,
+                    )}
+                  </span>
+                )}
               </div>
             ))
           )}
