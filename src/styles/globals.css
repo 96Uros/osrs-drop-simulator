@@ -111,16 +111,6 @@ body {
   width: 100%;
 }
 
-.footer-visits {
-  margin: 0;
-  line-height: 1.2;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: rgba(245, 236, 220, 0.82);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-}
-
 .footer-credit {
   margin: 0;
   font-size: 0.65rem;
@@ -241,22 +231,6 @@ body {
   color: #c9c9c9;
   font-size: 0.84rem;
   letter-spacing: 0.01em;
-}
-
-.visit-counter {
-  display: block;
-  margin-top: 0.12rem;
-  color: #ffffff86;
-  font-weight: 600;
-}
-
-.visit-counter-kofi {
-  position: absolute;
-  top: 5px;
-  left: 15px;
-  margin-top: 0;
-  font-size: 0.72rem;
-  text-align: center;
 }
 
 .controls {

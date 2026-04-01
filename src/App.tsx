@@ -195,7 +195,8 @@ function runDropSimulation(
         pool = commons;
       }
       const fallbackDrop = pool.reduce((best, d) =>
-        clampDropRollProbability(d.rarity) > clampDropRollProbability(best.rarity)
+        clampDropRollProbability(d.rarity) >
+        clampDropRollProbability(best.rarity)
           ? d
           : best,
       );
@@ -607,48 +608,8 @@ function App() {
   const [priceTick, setPriceTick] = useState(0);
   const [isLoadingMonsters, setIsLoadingMonsters] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [websiteVisitCount, setWebsiteVisitCount] = useState<number | null>(
-    null,
-  );
   const [kofiFooterHtml, setKofiFooterHtml] = useState("");
   const inFlightItemValues = useRef<Set<number>>(new Set());
-
-  useEffect(() => {
-    const VISIT_STORAGE_KEY = "osrs-drop-simulator-local-visits";
-    const VISIT_LAST_HIT_AT_KEY = "osrs-drop-simulator-last-hit-at";
-    const COUNT_API_HIT_URL =
-      "https://api.countapi.xyz/hit/osrs-drop-simulator/site-visits";
-    const COUNT_API_GET_URL =
-      "https://api.countapi.xyz/get/osrs-drop-simulator/site-visits";
-    const HIT_COOLDOWN_MS = 10_000;
-    const now = Date.now();
-    const lastHitRaw = localStorage.getItem(VISIT_LAST_HIT_AT_KEY);
-    const lastHitAt = Number.parseInt(lastHitRaw ?? "0", 10);
-    const shouldHitCounter =
-      !Number.isFinite(lastHitAt) || now - lastHitAt > HIT_COOLDOWN_MS;
-
-    void fetch(shouldHitCounter ? COUNT_API_HIT_URL : COUNT_API_GET_URL)
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const data = (await response.json()) as { value?: number };
-        if (typeof data.value === "number") {
-          if (shouldHitCounter) {
-            localStorage.setItem(VISIT_LAST_HIT_AT_KEY, String(now));
-          }
-          setWebsiteVisitCount(data.value);
-          return null;
-        }
-        throw new Error("Invalid visit counter response.");
-      })
-      .catch(() => {
-        // Fallback when the public counter API is unavailable.
-        const localRaw = localStorage.getItem(VISIT_STORAGE_KEY);
-        const localCount = Number.parseInt(localRaw ?? "0", 10);
-        const nextCount = Number.isFinite(localCount) ? localCount + 1 : 1;
-        localStorage.setItem(VISIT_STORAGE_KEY, String(nextCount));
-        setWebsiteVisitCount(nextCount);
-      });
-  }, []);
 
   useEffect(() => {
     const SCRIPT_ID = "kofi-widget-2";
@@ -1367,13 +1328,8 @@ function App() {
             />
           ) : null}
           <div className="footer-copy">
-            <p className="footer-visits">
-              Website was visited: {websiteVisitCount?.toLocaleString("en-US")}{" "}
-              x
-            </p>
             <p className="footer-credit">
-              Created by{" "}
-              <span className="footer-credit-ign">IGN: SoP crVek</span>
+              Created by <span className="footer-credit-ign">SoP crVek</span>
             </p>
             <p className="footer-attrib">
               Monster, drop, and GE data from the{" "}
