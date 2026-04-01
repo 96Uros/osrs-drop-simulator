@@ -548,7 +548,47 @@ function App() {
   const [priceTick, setPriceTick] = useState(0);
   const [isLoadingMonsters, setIsLoadingMonsters] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [websiteVisitCount, setWebsiteVisitCount] = useState<number | null>(
+    null,
+  );
   const inFlightItemValues = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    const VISIT_STORAGE_KEY = "osrs-drop-simulator-local-visits";
+    const VISIT_LAST_HIT_AT_KEY = "osrs-drop-simulator-last-hit-at";
+    const COUNT_API_HIT_URL =
+      "https://api.countapi.xyz/hit/osrs-drop-simulator/site-visits";
+    const COUNT_API_GET_URL =
+      "https://api.countapi.xyz/get/osrs-drop-simulator/site-visits";
+    const HIT_COOLDOWN_MS = 10_000;
+    const now = Date.now();
+    const lastHitRaw = localStorage.getItem(VISIT_LAST_HIT_AT_KEY);
+    const lastHitAt = Number.parseInt(lastHitRaw ?? "0", 10);
+    const shouldHitCounter =
+      !Number.isFinite(lastHitAt) || now - lastHitAt > HIT_COOLDOWN_MS;
+
+    void fetch(shouldHitCounter ? COUNT_API_HIT_URL : COUNT_API_GET_URL)
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data = (await response.json()) as { value?: number };
+        if (typeof data.value === "number") {
+          if (shouldHitCounter) {
+            localStorage.setItem(VISIT_LAST_HIT_AT_KEY, String(now));
+          }
+          setWebsiteVisitCount(data.value);
+          return null;
+        }
+        throw new Error("Invalid visit counter response.");
+      })
+      .catch(() => {
+        // Fallback when the public counter API is unavailable.
+        const localRaw = localStorage.getItem(VISIT_STORAGE_KEY);
+        const localCount = Number.parseInt(localRaw ?? "0", 10);
+        const nextCount = Number.isFinite(localCount) ? localCount + 1 : 1;
+        localStorage.setItem(VISIT_STORAGE_KEY, String(nextCount));
+        setWebsiteVisitCount(nextCount);
+      });
+  }, []);
 
   useEffect(() => {
     const fetchMonstersFromAnySource = async (): Promise<Monster[]> => {
@@ -906,6 +946,12 @@ function App() {
           <span className="kofi-title">Ko-fi</span>
           <span className="kofi-subtitle">Support project on Ko-fi</span>
         </a>
+        <span className="visit-counter visit-counter-kofi">
+          Website was visited:{" "}
+          {websiteVisitCount === null
+            ? "loading..."
+            : `${websiteVisitCount.toLocaleString("en-US")} x`}
+        </span>
         <div className="panel-header">
           <h1>OSRS Drop Simulator</h1>
           <p>Pick a boss, set kills, roll loot tab, and track your RNG.</p>

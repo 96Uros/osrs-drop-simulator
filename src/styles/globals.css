@@ -109,6 +109,22 @@ body {
   letter-spacing: 0.01em;
 }
 
+.visit-counter {
+  display: block;
+  margin-top: 0.12rem;
+  color: #ffffff86;
+  font-weight: 600;
+}
+
+.visit-counter-kofi {
+  position: absolute;
+  top: 5px;
+  left: 15px;
+  margin-top: 0;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
 .controls {
   display: grid;
   grid-template-columns: 1.05fr 1.45fr;
