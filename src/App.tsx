@@ -1,203 +1,33 @@
 import "./styles/globals.css";
 import { useEffect, useMemo, useRef, useState } from "react";
-
-type MonsterDrop = {
-  id: number;
-  name: string;
-  quantity: string | null;
-  rarity: number;
-  rolls: number;
-};
-
-type Monster = {
-  id: number;
-  name: string;
-  wiki_name: string;
-  last_updated?: string | null;
-  drops: MonsterDrop[];
-};
-
-type DropResult = {
-  id: number;
-  name: string;
-  quantity: number;
-  rarity: number;
-};
-
-type MonsterResponse = Monster[] | Record<string, Monster>;
-type SimulationBatch = {
-  drops: DropResult[];
-  expectedRareRolls: number;
-  successfulRareRolls: number;
-};
-type AccountMonsterStats = {
-  id: number;
-  name: string;
-  totalKills: number;
-  lastPlayedAt: string;
-};
-type AccountStatsStore = Record<string, AccountMonsterStats>;
-type LuckPoint = {
-  id: number;
-  luckPercent: number;
-};
-type ItemDropPrediction = {
-  monsterId: number;
-  monsterName: string;
-  itemName: string;
-  perKillChance: number;
-  expectedKills: number;
-  killsFor90Percent: number;
-};
-type EncounterFilter =
-  | "all"
-  | "bosses"
-  | "raids"
-  | "raids-hard"
-  | "dt2"
-  | "dt2-hard";
-type EncounterMode = "normal" | "hard";
-
-const MONSTER_URLS = [
-  "/monsters-complete.json",
-  "https://raw.githubusercontent.com/osrsbox/osrsbox-db/master/docs/monsters-complete.json",
-  "https://cdn.jsdelivr.net/gh/osrsbox/osrsbox-db@master/docs/monsters-complete.json",
-];
-const ITEM_ICON_URL =
-  "https://raw.githubusercontent.com/osrsbox/osrsbox-db/master/docs/items-icons";
-const ITEM_JSON_URL =
-  "https://raw.githubusercontent.com/osrsbox/osrsbox-db/master/docs/items-json";
-const WIKI_IMAGE_BASE_URL = "https://oldschool.runescape.wiki/images";
-const ACCOUNT_STORAGE_KEY = "osrs-drop-sim-account-stats-v1";
-const RARE_DROP_THRESHOLD = 0.02;
-const EXTREME_RARE_THRESHOLD = 0.001;
-const CUSTOM_ITEM_PRICES: Record<string, number> = {
-  "Magma Vestige": 68_000_000,
-  "Eye of the Duke": 22_000_000,
-  "Ultor Vestige": 120_000_000,
-  "Executioner's axe head": 24_000_000,
-  "Bellator Vestige": 58_000_000,
-  "Siren's staff": 21_000_000,
-  "Venator Vestige": 36_000_000,
-  "Leviathan's lure": 19_000_000,
-};
-const FALLBACK_ICON =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='36' height='32'><rect width='100%' height='100%' rx='4' ry='4' fill='%23222222'/><text x='50%' y='56%' dominant-baseline='middle' text-anchor='middle' fill='%23aaaaaa' font-size='9' font-family='Arial'>ITEM</text></svg>";
-
-const CUSTOM_ENCOUNTERS: Monster[] = [
-  {
-    id: -1001,
-    name: "Duke Sucellus",
-    wiki_name: "Duke Sucellus",
-    drops: [
-      { id: 9001001, name: "Magma Vestige", quantity: "1", rarity: 0.0015, rolls: 1 },
-      { id: 9001002, name: "Eye of the Duke", quantity: "1", rarity: 0.0015, rolls: 1 },
-      { id: 9001003, name: "Virtus mask", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 9001004, name: "Virtus robe top", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 9001005, name: "Virtus robe bottom", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 11230, name: "Dragon dart tips", quantity: "30-100", rarity: 0.06, rolls: 1 },
-      { id: 565, name: "Blood rune", quantity: "120-300", rarity: 0.12, rolls: 1 },
-      { id: 2364, name: "Runite bar", quantity: "2-6", rarity: 0.08, rolls: 1 },
-      { id: 995, name: "Coins", quantity: "15000-55000", rarity: 0.38, rolls: 1 },
-    ],
-  },
-  {
-    id: -1002,
-    name: "Vardorvis",
-    wiki_name: "Vardorvis",
-    drops: [
-      { id: 9001010, name: "Ultor Vestige", quantity: "1", rarity: 0.0015, rolls: 1 },
-      { id: 9001011, name: "Executioner's axe head", quantity: "1", rarity: 0.0015, rolls: 1 },
-      { id: 9001003, name: "Virtus mask", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 9001004, name: "Virtus robe top", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 9001005, name: "Virtus robe bottom", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 11230, name: "Dragon dart tips", quantity: "35-110", rarity: 0.07, rolls: 1 },
-      { id: 452, name: "Runite ore", quantity: "3-7", rarity: 0.08, rolls: 1 },
-      { id: 561, name: "Nature rune", quantity: "200-500", rarity: 0.11, rolls: 1 },
-      { id: 995, name: "Coins", quantity: "18000-62000", rarity: 0.35, rolls: 1 },
-    ],
-  },
-  {
-    id: -1003,
-    name: "The Whisperer",
-    wiki_name: "The Whisperer",
-    drops: [
-      { id: 9001020, name: "Bellator Vestige", quantity: "1", rarity: 0.0015, rolls: 1 },
-      { id: 9001021, name: "Siren's staff", quantity: "1", rarity: 0.0015, rolls: 1 },
-      { id: 9001003, name: "Virtus mask", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 9001004, name: "Virtus robe top", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 9001005, name: "Virtus robe bottom", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 560, name: "Death rune", quantity: "300-650", rarity: 0.13, rolls: 1 },
-      { id: 565, name: "Blood rune", quantity: "220-520", rarity: 0.12, rolls: 1 },
-      { id: 11230, name: "Dragon dart tips", quantity: "20-90", rarity: 0.06, rolls: 1 },
-      { id: 995, name: "Coins", quantity: "17000-64000", rarity: 0.36, rolls: 1 },
-    ],
-  },
-  {
-    id: -1004,
-    name: "The Leviathan",
-    wiki_name: "The Leviathan",
-    drops: [
-      { id: 9001030, name: "Venator Vestige", quantity: "1", rarity: 0.0015, rolls: 1 },
-      { id: 9001031, name: "Leviathan's lure", quantity: "1", rarity: 0.0015, rolls: 1 },
-      { id: 9001003, name: "Virtus mask", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 9001004, name: "Virtus robe top", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 9001005, name: "Virtus robe bottom", quantity: "1", rarity: 0.0009, rolls: 1 },
-      { id: 1516, name: "Magic logs", quantity: "30-100", rarity: 0.1, rolls: 1 },
-      { id: 2364, name: "Runite bar", quantity: "2-6", rarity: 0.08, rolls: 1 },
-      { id: 560, name: "Death rune", quantity: "250-550", rarity: 0.1, rolls: 1 },
-      { id: 995, name: "Coins", quantity: "19000-60000", rarity: 0.34, rolls: 1 },
-    ],
-  },
-  {
-    id: -2001,
-    name: "Chambers of Xeric",
-    wiki_name: "Chambers of Xeric (Raid)",
-    drops: [
-      { id: 20997, name: "Twisted bow", quantity: "1", rarity: 0.0013, rolls: 1 },
-      { id: 21006, name: "Kodai insignia", quantity: "1", rarity: 0.002, rolls: 1 },
-      { id: 21009, name: "Dragon claws", quantity: "1", rarity: 0.0025, rolls: 1 },
-      { id: 21000, name: "Dragon hunter crossbow", quantity: "1", rarity: 0.0028, rolls: 1 },
-      { id: 21018, name: "Ancestral hat", quantity: "1", rarity: 0.0026, rolls: 1 },
-      { id: 21021, name: "Ancestral robe top", quantity: "1", rarity: 0.0026, rolls: 1 },
-      { id: 21024, name: "Ancestral robe bottom", quantity: "1", rarity: 0.0026, rolls: 1 },
-      { id: 21079, name: "Dexterous prayer scroll", quantity: "1", rarity: 0.0065, rolls: 1 },
-      { id: 21034, name: "Arcane prayer scroll", quantity: "1", rarity: 0.0065, rolls: 1 },
-      { id: 995, name: "Coins", quantity: "40000-200000", rarity: 0.65, rolls: 1 },
-    ],
-  },
-  {
-    id: -2002,
-    name: "Theatre of Blood",
-    wiki_name: "Theatre of Blood (Raid)",
-    drops: [
-      { id: 22325, name: "Scythe of vitur", quantity: "1", rarity: 0.0032, rolls: 1 },
-      { id: 22324, name: "Ghrazi rapier", quantity: "1", rarity: 0.004, rolls: 1 },
-      { id: 22481, name: "Sanguinesti staff", quantity: "1", rarity: 0.004, rolls: 1 },
-      { id: 22494, name: "Avernic defender hilt", quantity: "1", rarity: 0.006, rolls: 1 },
-      { id: 25731, name: "Justiciar faceguard", quantity: "1", rarity: 0.0033, rolls: 1 },
-      { id: 22327, name: "Justiciar chestguard", quantity: "1", rarity: 0.0033, rolls: 1 },
-      { id: 22330, name: "Justiciar legguards", quantity: "1", rarity: 0.0033, rolls: 1 },
-      { id: 995, name: "Coins", quantity: "50000-250000", rarity: 0.7, rolls: 1 },
-    ],
-  },
-  {
-    id: -2003,
-    name: "Tombs of Amascut",
-    wiki_name: "Tombs of Amascut (Raid)",
-    drops: [
-      { id: 27277, name: "Tumeken's shadow", quantity: "1", rarity: 0.0016, rolls: 1 },
-      { id: 27226, name: "Osmumten's fang", quantity: "1", rarity: 0.0055, rolls: 1 },
-      { id: 27235, name: "Elidinis' ward", quantity: "1", rarity: 0.005, rolls: 1 },
-      { id: 27251, name: "Lightbearer", quantity: "1", rarity: 0.005, rolls: 1 },
-      { id: 27275, name: "Masori mask", quantity: "1", rarity: 0.0042, rolls: 1 },
-      { id: 27272, name: "Masori body", quantity: "1", rarity: 0.0042, rolls: 1 },
-      { id: 27269, name: "Masori chaps", quantity: "1", rarity: 0.0042, rolls: 1 },
-      { id: 27322, name: "Elidinis' ward (f)", quantity: "1", rarity: 0.0018, rolls: 1 },
-      { id: 995, name: "Coins", quantity: "60000-300000", rarity: 0.72, rolls: 1 },
-    ],
-  },
-];
+import type {
+  AccountStatsStore,
+  DropResult,
+  EncounterFilter,
+  EncounterMode,
+  ItemDropPrediction,
+  LuckPoint,
+  Monster,
+  MonsterDrop,
+  MonsterResponse,
+  SimulationBatch,
+} from "./app/types";
+import {
+  ACCOUNT_STORAGE_KEY,
+  CUSTOM_ITEM_PRICES,
+  EXTREME_RARE_THRESHOLD,
+  FALLBACK_ICON,
+  ITEM_ICON_URL,
+  ITEM_JSON_URL,
+  MAX_KILL_INPUT,
+  MONSTER_URLS,
+  RARE_DROP_THRESHOLD,
+  RUNELITE_ICON_URL,
+  WIKI_IMAGE_BASE_URL,
+  WIKI_LATEST_PRICE_URL,
+  WIKI_MAPPING_URL,
+} from "./app/constants";
+import { CUSTOM_ENCOUNTERS } from "./app/custom-encounters";
 
 function parseQuantityRange(quantity: string | null): number {
   if (!quantity) return 1;
@@ -215,7 +45,10 @@ function parseQuantityRange(quantity: string | null): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function runDropSimulation(drops: MonsterDrop[], killCount: number): SimulationBatch {
+function runDropSimulation(
+  drops: MonsterDrop[],
+  killCount: number,
+): SimulationBatch {
   const totals = new Map<number, DropResult>();
   let successfulRareRolls = 0;
   let expectedRareRolls = 0;
@@ -276,7 +109,9 @@ function dedupeMonstersByLatestUpdate(monsters: Monster[]): Monster[] {
   const byDisplayName = new Map<string, Monster>();
 
   for (const monster of monsters) {
-    const displayName = (monster.wiki_name || monster.name).trim().toLowerCase();
+    const displayName = (monster.wiki_name || monster.name)
+      .trim()
+      .toLowerCase();
     const existing = byDisplayName.get(displayName);
 
     if (!existing) {
@@ -302,6 +137,17 @@ function getMonsterLabel(monster: Monster): string {
   return monster.wiki_name || monster.name;
 }
 
+function getDisplayMonsterLabel(
+  monster: Monster,
+  filter: EncounterFilter,
+): string {
+  const baseLabel = getMonsterLabel(monster);
+  if (filter === "dt2-hard" && getEncounterType(monster) === "dt2") {
+    return `Awakened ${baseLabel}`;
+  }
+  return baseLabel;
+}
+
 function getQuantityTierClass(quantity: number): string {
   if (quantity >= 1_000_000) return "qty-tier-1m";
   if (quantity >= 100_000) return "qty-tier-100k";
@@ -310,7 +156,10 @@ function getQuantityTierClass(quantity: number): string {
   return "qty-tier-base";
 }
 
-function mergeDropResults(current: DropResult[], incoming: DropResult[]): DropResult[] {
+function mergeDropResults(
+  current: DropResult[],
+  incoming: DropResult[],
+): DropResult[] {
   const totals = new Map<number, DropResult>();
 
   for (const drop of current) {
@@ -366,13 +215,66 @@ function getWikiItemImageUrl(itemName: string): string {
   return `${WIKI_IMAGE_BASE_URL}/${encodeURIComponent(normalized)}_detail.png`;
 }
 
+function getWikiItemImageUrlPlain(itemName: string): string {
+  const normalized = itemName.trim().replace(/\s+/g, "_");
+  return `${WIKI_IMAGE_BASE_URL}/${encodeURIComponent(normalized)}.png`;
+}
+
+function normalizeItemName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function getDropUnitValue(
+  drop: DropResult,
+  itemIdByName: Record<string, number>,
+  itemValues: Record<number, number>,
+): number {
+  const resolvedId = getResolvedItemId(drop, itemIdByName);
+  const resolvedById = itemValues[resolvedId];
+  if (typeof resolvedById === "number") return resolvedById;
+
+  const byName = CUSTOM_ITEM_PRICES[drop.name];
+  if (typeof byName === "number") return byName;
+
+  const normalized = normalizeItemName(drop.name);
+  const nameMatch = Object.entries(CUSTOM_ITEM_PRICES).find(
+    ([name]) => normalizeItemName(name) === normalized,
+  );
+  return nameMatch?.[1] ?? 0;
+}
+
+function getResolvedItemId(
+  drop: DropResult,
+  itemIdByName: Record<string, number>,
+): number {
+  if (drop.id > 0) return drop.id;
+  return itemIdByName[normalizeItemName(drop.name)] ?? drop.id;
+}
+
+function getIconCandidates(drop: DropResult): string[] {
+  const wikiDetail = getWikiItemImageUrl(drop.name);
+  const wikiPlain = getWikiItemImageUrlPlain(drop.name);
+  if (drop.id > 0) {
+    return [
+      `${RUNELITE_ICON_URL}/${drop.id}.png`,
+      `${ITEM_ICON_URL}/${drop.id}.png`,
+      wikiDetail,
+      wikiPlain,
+      FALLBACK_ICON,
+    ];
+  }
+  return [wikiDetail, wikiPlain, FALLBACK_ICON];
+}
+
 function getEncounterType(monster: Monster): EncounterFilter {
   if (monster.id <= -2000) return "raids";
   if (monster.id <= -1000) return "dt2";
   return "bosses";
 }
 
-function getFilterBaseType(filter: EncounterFilter): "all" | "bosses" | "raids" | "dt2" {
+function getFilterBaseType(
+  filter: EncounterFilter,
+): "all" | "bosses" | "raids" | "dt2" {
   if (filter === "raids-hard") return "raids";
   if (filter === "dt2-hard") return "dt2";
   return filter;
@@ -386,7 +288,8 @@ function getDropsForMode(monster: Monster, mode: EncounterMode): MonsterDrop[] {
   if (mode === "normal") return monster.drops;
 
   const encounterType = getEncounterType(monster);
-  if (encounterType !== "raids" && encounterType !== "dt2") return monster.drops;
+  if (encounterType !== "raids" && encounterType !== "dt2")
+    return monster.drops;
 
   const uniqueBoost = encounterType === "raids" ? 1.25 : 1.15;
   return monster.drops.map((drop) => {
@@ -403,17 +306,25 @@ function calculatePerKillChance(rarity: number, rolls: number): number {
   return 1 - (1 - rarity) ** rolls;
 }
 
-function calculateItemPredictions(monsters: Monster[], itemQuery: string): ItemDropPrediction[] {
+function calculateItemPredictions(
+  monsters: Monster[],
+  itemQuery: string,
+): ItemDropPrediction[] {
   const query = itemQuery.trim().toLowerCase();
   if (!query) return [];
 
   const predictions: ItemDropPrediction[] = [];
 
   for (const monster of monsters) {
-    const matchingDrops = monster.drops.filter((drop) => drop.name.toLowerCase().includes(query));
+    const matchingDrops = monster.drops.filter((drop) =>
+      drop.name.toLowerCase().includes(query),
+    );
     if (matchingDrops.length === 0) continue;
 
-    const groupedByItem = new Map<string, { itemName: string; perKillMissChance: number }>();
+    const groupedByItem = new Map<
+      string,
+      { itemName: string; perKillMissChance: number }
+    >();
 
     for (const drop of matchingDrops) {
       const key = drop.name.toLowerCase();
@@ -456,7 +367,8 @@ function calculateItemPredictions(monsters: Monster[], itemQuery: string): ItemD
 function App() {
   const [monsters, setMonsters] = useState<Monster[]>([]);
   const [selectedMonsterId, setSelectedMonsterId] = useState<string>("");
-  const [encounterFilter, setEncounterFilter] = useState<EncounterFilter>("all");
+  const [encounterFilter, setEncounterFilter] =
+    useState<EncounterFilter>("all");
   const [monsterQuery, setMonsterQuery] = useState("");
   const [itemSearchQuery, setItemSearchQuery] = useState("");
   const [killCountInput, setKillCountInput] = useState("100");
@@ -465,6 +377,7 @@ function App() {
   const [totalKills, setTotalKills] = useState(0);
   const [lifetimeKills, setLifetimeKills] = useState(0);
   const [itemValues, setItemValues] = useState<Record<number, number>>({});
+  const [itemIdByName, setItemIdByName] = useState<Record<string, number>>({});
   const [expectedRareRollsTotal, setExpectedRareRollsTotal] = useState(0);
   const [successfulRareRollsTotal, setSuccessfulRareRollsTotal] = useState(0);
   const [luckHistory, setLuckHistory] = useState<LuckPoint[]>([]);
@@ -492,7 +405,10 @@ function App() {
     const fetchMonsters = async () => {
       try {
         const data = await fetchMonstersFromAnySource();
-        const withDrops = dedupeMonstersByLatestUpdate([...data, ...CUSTOM_ENCOUNTERS])
+        const withDrops = dedupeMonstersByLatestUpdate([
+          ...data,
+          ...CUSTOM_ENCOUNTERS,
+        ])
           .filter((monster) => monster.drops.length > 0)
           .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -507,6 +423,22 @@ function App() {
     };
 
     void fetchMonsters();
+  }, []);
+
+  useEffect(() => {
+    void fetch(WIKI_MAPPING_URL)
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data = (await response.json()) as Array<{ id: number; name: string }>;
+        const byName: Record<string, number> = {};
+        for (const row of data) {
+          if (!row?.id || !row?.name) continue;
+          byName[normalizeItemName(row.name)] = row.id;
+        }
+        setItemIdByName(byName);
+        return null;
+      })
+      .catch(() => null);
   }, []);
 
   const selectedMonster = useMemo(
@@ -537,10 +469,10 @@ function App() {
 
   const totalGpValue = useMemo(() => {
     return results.reduce((sum, drop) => {
-      const itemValue = itemValues[drop.id] ?? CUSTOM_ITEM_PRICES[drop.name] ?? 0;
-      return sum + itemValue * drop.quantity;
+      const itemValue = getDropUnitValue(drop, itemIdByName, itemValues);
+      return sum + drop.quantity * itemValue;
     }, 0);
-  }, [itemValues, results]);
+  }, [itemIdByName, itemValues, results]);
 
   const averageLuckPercent = useMemo(() => {
     if (expectedRareRollsTotal <= 0) return 0;
@@ -558,19 +490,25 @@ function App() {
 
   const applyBatch = (kills: number) => {
     if (!selectedMonster) return;
-    const modeDrops = getDropsForMode(selectedMonster, getModeFromFilter(encounterFilter));
+    const modeDrops = getDropsForMode(
+      selectedMonster,
+      getModeFromFilter(encounterFilter),
+    );
     const batch = runDropSimulation(modeDrops, kills);
     setResults((previous) => mergeDropResults(previous, batch.drops));
     setTotalKills((previous) => previous + kills);
     setExpectedRareRollsTotal((previous) => previous + batch.expectedRareRolls);
-    setSuccessfulRareRollsTotal((previous) => previous + batch.successfulRareRolls);
+    setSuccessfulRareRollsTotal(
+      (previous) => previous + batch.successfulRareRolls,
+    );
 
     const luckPercent =
       batch.expectedRareRolls > 0
         ? (batch.successfulRareRolls / batch.expectedRareRolls) * 100
         : 0;
     setLuckHistory((previous) => {
-      const nextId = previous.length === 0 ? 1 : previous[previous.length - 1].id + 1;
+      const nextId =
+        previous.length === 0 ? 1 : previous[previous.length - 1].id + 1;
       const next = [...previous, { id: nextId, luckPercent }];
       return next.slice(-30);
     });
@@ -578,8 +516,10 @@ function App() {
 
   const handleManualKill = () => {
     const kills = Number.parseInt(killCountInput, 10);
-    if (!Number.isFinite(kills) || kills <= 0) {
-      setError("Enter a valid kill count.");
+    if (!Number.isFinite(kills) || kills <= 0 || kills > MAX_KILL_INPUT) {
+      setError(
+        `Enter a valid kill count (1-${MAX_KILL_INPUT.toLocaleString("en-US")}).`,
+      );
       return;
     }
     if (!selectedMonster) {
@@ -591,12 +531,22 @@ function App() {
     applyBatch(kills);
   };
 
+  const handleResetRun = () => {
+    setResults([]);
+    setTotalKills(0);
+    setExpectedRareRollsTotal(0);
+    setSuccessfulRareRollsTotal(0);
+    setLuckHistory([]);
+    setAutoKillEnabled(false);
+    setError(null);
+  };
+
   useEffect(() => {
     if (!autoKillEnabled) return;
     if (!selectedMonster) return;
 
     const kills = Number.parseInt(killCountInput, 10);
-    if (!Number.isFinite(kills) || kills <= 0) return;
+    if (!Number.isFinite(kills) || kills <= 0 || kills > MAX_KILL_INPUT) return;
 
     const interval = window.setInterval(() => {
       applyBatch(kills);
@@ -607,19 +557,45 @@ function App() {
 
   useEffect(() => {
     const missingIds = results
-      .map((drop) => drop.id)
-      .filter((id) => itemValues[id] === undefined && !inFlightItemValues.current.has(id));
+      .map((drop) => getResolvedItemId(drop, itemIdByName))
+      .filter(
+        (id) =>
+          itemValues[id] === undefined && !inFlightItemValues.current.has(id),
+      );
 
     for (const id of missingIds) {
+      if (id <= 0) {
+        setItemValues((previous) => ({ ...previous, [id]: 0 }));
+        continue;
+      }
       inFlightItemValues.current.add(id);
-      void fetch(`${ITEM_JSON_URL}/${id}.json`)
+      void fetch(`${WIKI_LATEST_PRICE_URL}?id=${id}`)
         .then(async (response) => {
           if (!response.ok) {
+            return fetch(`${ITEM_JSON_URL}/${id}.json`);
+          }
+          const data = (await response.json()) as {
+            data?: Record<string, { high?: number; low?: number }>;
+          };
+          const liveValue =
+            data.data?.[String(id)]?.high ?? data.data?.[String(id)]?.low ?? 0;
+          setItemValues((previous) => ({ ...previous, [id]: liveValue }));
+          return null;
+        })
+        .then(async (fallbackResponse) => {
+          if (
+            !fallbackResponse ||
+            !("ok" in fallbackResponse) ||
+            !fallbackResponse.ok
+          ) {
             setItemValues((previous) => ({ ...previous, [id]: 0 }));
             return null;
           }
-          const data = (await response.json()) as { highalch?: number | null; cost?: number };
-          const value = data.highalch ?? data.cost ?? 0;
+          const fallbackData = (await fallbackResponse.json()) as {
+            highalch?: number | null;
+            cost?: number;
+          };
+          const value = fallbackData.highalch ?? fallbackData.cost ?? 0;
           setItemValues((previous) => ({ ...previous, [id]: value }));
           return null;
         })
@@ -631,7 +607,7 @@ function App() {
           inFlightItemValues.current.delete(id);
         });
     }
-  }, [itemValues, results]);
+  }, [itemIdByName, itemValues, results]);
 
   useEffect(() => {
     setResults([]);
@@ -675,7 +651,9 @@ function App() {
           <select
             id="encounter-filter"
             value={encounterFilter}
-            onChange={(event) => setEncounterFilter(event.target.value as EncounterFilter)}
+            onChange={(event) =>
+              setEncounterFilter(event.target.value as EncounterFilter)
+            }
           >
             <option value="all">All</option>
             <option value="bosses">Bosses</option>
@@ -685,7 +663,7 @@ function App() {
             <option value="dt2-hard">DT2 Bosses (Hard)</option>
           </select>
 
-          <label htmlFor="monster">Monster</label>
+          <label htmlFor="monster">Monster/Raid or Boss</label>
           <input
             id="monster"
             type="text"
@@ -696,7 +674,9 @@ function App() {
               setMonsterQuery(value);
 
               const exactMatch = monsters.find(
-                (monster) => getMonsterLabel(monster).toLowerCase() === value.toLowerCase(),
+                (monster) =>
+                  getDisplayMonsterLabel(monster, encounterFilter).toLowerCase() ===
+                  value.toLowerCase(),
               );
               setSelectedMonsterId(exactMatch ? String(exactMatch.id) : "");
             }}
@@ -705,39 +685,62 @@ function App() {
           />
           <datalist id="monster-options">
             {filteredMonsters.map((monster) => (
-              <option key={monster.id} value={getMonsterLabel(monster)} />
+              <option
+                key={monster.id}
+                value={getDisplayMonsterLabel(monster, encounterFilter)}
+              />
             ))}
           </datalist>
 
-          <label htmlFor="kills">Kill Count</label>
+          <label htmlFor="kills">Kills and Raids count</label>
           <input
             id="kills"
             type="number"
             min={1}
+            max={MAX_KILL_INPUT}
             value={killCountInput}
-            onChange={(event) => setKillCountInput(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              const parsed = Number.parseInt(value, 10);
+              if (Number.isFinite(parsed) && parsed > MAX_KILL_INPUT) {
+                setKillCountInput(String(MAX_KILL_INPUT));
+                return;
+              }
+              setKillCountInput(value);
+            }}
             placeholder="e.g. 500"
           />
 
-          <button
-            type="button"
-            className="kill-btn"
-            onClick={handleManualKill}
-            disabled={isLoadingMonsters || !selectedMonster}
-          >
-            {selectedMonster
-              ? `Kill ${getMonsterLabel(selectedMonster)} x${killCountInput || "0"}`
-              : "Select a monster first"}
-          </button>
+          <div className="controls-actions">
+            <button
+              type="button"
+              className="kill-btn"
+              onClick={handleManualKill}
+              disabled={isLoadingMonsters || !selectedMonster}
+            >
+              {selectedMonster
+                ? `Kill ${getDisplayMonsterLabel(selectedMonster, encounterFilter)} x${killCountInput || "0"}`
+                : "Select a monster first"}
+            </button>
 
-          <button
-            type="button"
-            className="secondary-btn auto-btn"
-            onClick={() => setAutoKillEnabled((previous) => !previous)}
-            disabled={!selectedMonster}
-          >
-            {autoKillEnabled ? "Stop Auto Kill" : "Start Auto Kill"}
-          </button>
+            <button
+              type="button"
+              className="secondary-btn auto-btn"
+              onClick={() => setAutoKillEnabled((previous) => !previous)}
+              disabled={!selectedMonster}
+            >
+              {autoKillEnabled ? "Stop Auto Kill" : "Start Auto Kill"}
+            </button>
+
+            <button
+              type="button"
+              className="secondary-btn auto-btn reset-btn"
+              onClick={handleResetRun}
+              disabled={!selectedMonster}
+            >
+              Reset
+            </button>
+          </div>
         </div>
 
         <div className="predictor">
@@ -752,7 +755,9 @@ function App() {
           {itemSearchQuery.trim() && (
             <div className="predictor-results">
               {itemPredictions.length === 0 ? (
-                <p className="empty">No matching item drops found for this query.</p>
+                <p className="empty">
+                  No matching item drops found for this query.
+                </p>
               ) : (
                 itemPredictions.map((prediction) => (
                   <div
@@ -764,12 +769,23 @@ function App() {
                       <em>{prediction.itemName}</em>
                     </span>
                     <span>
-                      Avg: {Math.ceil(prediction.expectedKills).toLocaleString("en-US")} kills
+                      Avg:{" "}
+                      {Math.ceil(prediction.expectedKills).toLocaleString(
+                        "en-US",
+                      )}{" "}
+                      kills
                     </span>
                     <span>
-                      90%: {Math.ceil(prediction.killsFor90Percent).toLocaleString("en-US")} kills
+                      90%:{" "}
+                      {Math.ceil(prediction.killsFor90Percent).toLocaleString(
+                        "en-US",
+                      )}{" "}
+                      kills
                     </span>
-                    <span>Chance/kill: {(prediction.perKillChance * 100).toFixed(3)}%</span>
+                    <span>
+                      Chance/kill: {(prediction.perKillChance * 100).toFixed(3)}
+                      %
+                    </span>
                   </div>
                 ))
               )}
@@ -780,23 +796,34 @@ function App() {
         {error && <p className="error">{error}</p>}
 
         <div className="results-meta">
-          <span>{selectedMonster ? getMonsterLabel(selectedMonster) : "No monster selected"}</span>
+          <span>
+            {selectedMonster
+              ? getDisplayMonsterLabel(selectedMonster, encounterFilter)
+              : "No monster selected"}
+          </span>
           <span>Killed: {totalKills.toLocaleString("en-US")}</span>
-          <span>Account kills: {(lifetimeKills + totalKills).toLocaleString("en-US")}</span>
+          <span>
+            Account kills:{" "}
+            {(lifetimeKills + totalKills).toLocaleString("en-US")}
+          </span>
           <span>{results.length} unique drops</span>
-          <span>Total value: {formatGp(totalGpValue)}</span>
           <span>Rare luck: {averageLuckPercent.toFixed(1)}%</span>
-          {dryLevel && <span className="dry-indicator">{dryLevel} 😂</span>}
+          {dryLevel && <span className="dry-indicator">{dryLevel}</span>}
         </div>
 
         <div className="rng-panel">
           <div className="rng-row">
-            <span>Rare luck vs average player ({`<=${Math.round(RARE_DROP_THRESHOLD * 100)}% drop chance`})</span>
+            <span>
+              Rare luck vs average player (
+              {`<=${Math.round(RARE_DROP_THRESHOLD * 100)}% drop chance`})
+            </span>
             <strong>{averageLuckPercent.toFixed(1)}% vs 100%</strong>
           </div>
           <div className="rng-chart">
             {luckHistory.length === 0 ? (
-              <p className="empty">RNG distribution appears after your first kill batch.</p>
+              <p className="empty">
+                RNG distribution appears after your first kill batch.
+              </p>
             ) : (
               luckHistory.map((point) => (
                 <div
@@ -812,28 +839,54 @@ function App() {
           </div>
         </div>
 
-        <h3 className="loot-tab-title">Loot Tab</h3>
+        <div className="loot-tab-header">
+          <h3 className="loot-tab-title">Loot Tab</h3>
+          <span className="loot-tab-value">Total GP: {formatGp(totalGpValue)}</span>
+        </div>
         <div className="results">
           {results.length === 0 ? (
             <p className="empty">No results yet. Run a simulation.</p>
           ) : (
             results.map((drop) => (
-              <div className={`drop-card ${getDropCardClass(drop)}`} key={drop.id}>
+              <div
+                className={`drop-card ${getDropCardClass(drop)}`}
+                key={drop.id}
+              >
+                {(() => {
+                  const resolvedId = getResolvedItemId(drop, itemIdByName);
+                  const iconDrop: DropResult = { ...drop, id: resolvedId };
+                  return (
                 <img
-                  src={drop.id > 0 ? `${ITEM_ICON_URL}/${drop.id}.png` : getWikiItemImageUrl(drop.name)}
+                  src={getIconCandidates(iconDrop)[0]}
                   alt={drop.name}
                   loading="lazy"
                   onError={(event) => {
                     const image = event.currentTarget;
-                    const wikiImage = getWikiItemImageUrl(drop.name);
-                    if (image.src !== wikiImage) image.src = wikiImage;
-                    else if (image.src !== FALLBACK_ICON) image.src = FALLBACK_ICON;
+                    const candidates = getIconCandidates(iconDrop);
+                    const currentStep = Number.parseInt(
+                      image.dataset.fallbackStep ?? "0",
+                      10,
+                    );
+                    const nextStep = Number.isFinite(currentStep)
+                      ? currentStep + 1
+                      : 1;
+                    image.dataset.fallbackStep = String(nextStep);
+                    image.src =
+                      candidates[Math.min(nextStep, candidates.length - 1)];
                   }}
                 />
+                  );
+                })()}
                 <p>{drop.name}</p>
                 <strong className={getQuantityTierClass(drop.quantity)}>
                   x{drop.quantity.toLocaleString("en-US")}
                 </strong>
+                <span className="drop-card-gp">
+                  {formatGp(
+                    getDropUnitValue(drop, itemIdByName, itemValues) *
+                      drop.quantity,
+                  )}
+                </span>
               </div>
             ))
           )}
