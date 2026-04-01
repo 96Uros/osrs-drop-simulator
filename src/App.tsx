@@ -883,6 +883,17 @@ function App() {
   return (
     <div className="container">
       <div className="panel">
+        <a
+          className="kofi-float"
+          href="https://ko-fi.com/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Support on Ko-fi"
+          title="Support on Ko-fi"
+        >
+          <span className="kofi-title">Ko-fi</span>
+          <span className="kofi-subtitle">Support the project</span>
+        </a>
         <div className="panel-header">
           <h1>OSRS Boss Drop Simulator</h1>
           <p>Pick a boss, set kills, roll loot tab, and track your RNG.</p>
@@ -998,65 +1009,70 @@ function App() {
               placeholder="e.g. 500"
             />
 
-            {selectedMonster && getEncounterType(selectedMonster) === "raids" && (
-              <>
-                {selectedMonster.id === -2001 && (
-                  <>
-                    <label htmlFor="cox-points">CoX points</label>
-                    <input
-                      id="cox-points"
-                      type="number"
-                      min={1000}
-                      max={200000}
-                      value={coxPointsInput}
-                      onChange={(event) => setCoxPointsInput(event.target.value)}
-                      placeholder="e.g. 30000"
-                    />
-                  </>
-                )}
-                {selectedMonster.id === -2003 && (
-                  <>
-                    <label htmlFor="toa-level">ToA raid level</label>
-                    <input
-                      id="toa-level"
-                      type="number"
-                      min={0}
-                      max={700}
-                      value={toaLevelInput}
-                      onChange={(event) => setToaLevelInput(event.target.value)}
-                      placeholder="e.g. 300"
-                    />
-                  </>
-                )}
-                {selectedMonster.id === -2002 && (
-                  <>
-                    <label htmlFor="tob-team-size">ToB team size</label>
-                    <input
-                      id="tob-team-size"
-                      type="number"
-                      min={1}
-                      max={5}
-                      value={tobTeamSizeInput}
-                      onChange={(event) =>
-                        setTobTeamSizeInput(event.target.value)
-                      }
-                      placeholder="e.g. 4"
-                    />
-                    <label htmlFor="tob-deathless">ToB deathless run</label>
-                    <select
-                      id="tob-deathless"
-                      value={tobDeathless ? "yes" : "no"}
-                      onChange={(event) =>
-                        setTobDeathless(event.target.value === "yes")
-                      }
-                    >
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                  </>
-                )}
-              </>
-            )}
+            {selectedMonster &&
+              getEncounterType(selectedMonster) === "raids" && (
+                <>
+                  {selectedMonster.id === -2001 && (
+                    <>
+                      <label htmlFor="cox-points">CoX points</label>
+                      <input
+                        id="cox-points"
+                        type="number"
+                        min={1000}
+                        max={200000}
+                        value={coxPointsInput}
+                        onChange={(event) =>
+                          setCoxPointsInput(event.target.value)
+                        }
+                        placeholder="e.g. 30000"
+                      />
+                    </>
+                  )}
+                  {selectedMonster.id === -2003 && (
+                    <>
+                      <label htmlFor="toa-level">ToA raid level</label>
+                      <input
+                        id="toa-level"
+                        type="number"
+                        min={0}
+                        max={700}
+                        value={toaLevelInput}
+                        onChange={(event) =>
+                          setToaLevelInput(event.target.value)
+                        }
+                        placeholder="e.g. 300"
+                      />
+                    </>
+                  )}
+                  {selectedMonster.id === -2002 && (
+                    <>
+                      <label htmlFor="tob-team-size">ToB team size</label>
+                      <input
+                        id="tob-team-size"
+                        type="number"
+                        min={1}
+                        max={5}
+                        value={tobTeamSizeInput}
+                        onChange={(event) =>
+                          setTobTeamSizeInput(event.target.value)
+                        }
+                        placeholder="e.g. 4"
+                      />
+                      <label htmlFor="tob-deathless">ToB deathless run</label>
+                      <select
+                        id="tob-deathless"
+                        value={tobDeathless ? "yes" : "no"}
+                        onChange={(event) =>
+                          setTobDeathless(event.target.value === "yes")
+                        }
+                      >
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </>
+                  )}
+                </>
+              )}
           </div>
 
           <div className="controls-actions">
@@ -1092,7 +1108,9 @@ function App() {
         </div>
 
         <div className="predictor">
-          <label htmlFor="item-search">Item Hunt Predictor</label>
+          <label htmlFor="item-search">
+            Item Hunt Predictor (not the most accurate, but a good estimate)
+          </label>
           <input
             id="item-search"
             type="text"

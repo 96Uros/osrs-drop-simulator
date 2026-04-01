@@ -34,6 +34,7 @@ body {
   height: 100vh;
   margin: 0 auto;
   padding: 0.85rem;
+  position: relative;
   border-radius: 0;
   background: linear-gradient(
     180deg,
@@ -43,6 +44,44 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.kofi-float {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 118px;
+  height: 54px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 227, 176, 0.4);
+  background: rgba(12, 12, 12, 0.82);
+  color: #ffe3b0;
+  text-decoration: none;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.kofi-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.kofi-subtitle {
+  font-size: 0.58rem;
+  color: #ffe9c2;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.kofi-float:hover {
+  filter: brightness(1.07);
+  border-color: rgba(255, 227, 176, 0.65);
 }
 
 .panel-header {
