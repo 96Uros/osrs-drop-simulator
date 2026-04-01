@@ -11,7 +11,8 @@ export const ITEM_JSON_URL =
 export const WIKI_IMAGE_BASE_URL = "https://oldschool.runescape.wiki/images";
 export const WIKI_LATEST_PRICE_URL =
   "https://prices.runescape.wiki/api/v1/osrs/latest";
-export const WIKI_MAPPING_URL = "https://prices.runescape.wiki/api/v1/osrs/mapping";
+export const WIKI_MAPPING_URL =
+  "https://prices.runescape.wiki/api/v1/osrs/mapping";
 export const RUNELITE_ICON_URL = "https://static.runelite.net/cache/item/icon";
 
 export const ACCOUNT_STORAGE_KEY = "osrs-drop-sim-account-stats-v1";
