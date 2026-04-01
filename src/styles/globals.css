@@ -8,6 +8,7 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .container {
@@ -16,10 +17,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  height: 100vh;
+  height: auto;
   min-height: 100vh;
-  max-height: 100vh;
-  overflow: hidden;
+  min-height: 100dvh;
+  max-height: none;
+  overflow: visible;
   background-image: url("../assets/bg2.jpg");
   background-position: center center;
   background-repeat: repeat-y;
@@ -45,7 +47,7 @@ body {
 .panel {
   width: min(800px, 100vw);
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: auto;
   margin: 0 auto;
   padding: 0.85rem;
   position: relative;
@@ -57,7 +59,7 @@ body {
   );
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .footer-container {
@@ -435,8 +437,8 @@ body {
 }
 
 .loot-tab-section {
-  flex: 1;
-  min-height: 0;
+  flex: 0 1 auto;
+  min-height: auto;
   display: flex;
   flex-direction: column;
 }
@@ -538,15 +540,17 @@ body {
 }
 
 .results {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
   gap: 0.34rem;
   align-content: start;
   padding-top: 3px;
   padding-right: 0.25rem;
+  -webkit-overflow-scrolling: touch;
 }
 
 .drop-card {
