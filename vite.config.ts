@@ -5,6 +5,10 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   preview: {
-    allowedHosts: ["osrs-drop-simulator.onrender.com", "osrs-drop-simulator.com"],
+    allowedHosts: [
+      "osrs-drop-simulator.onrender.com",
+      "osrs-drop-simulator.com",
+      "www.osrs-drop-simulator.com",
+    ],
   },
 })
