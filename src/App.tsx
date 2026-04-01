@@ -29,6 +29,32 @@ import {
 } from "./app/constants";
 import { CUSTOM_ENCOUNTERS } from "./app/custom-encounters";
 
+declare global {
+  interface Window {
+    kofiwidget2?: {
+      init: (title: string, color: string, id: string) => void;
+      /** Uses document.writeln — never call after load; it wipes the page. */
+      draw: () => void;
+      getHTML: () => string;
+    };
+  }
+}
+
+let kofiWidgetInitialized = false;
+
+function getKofiFooterMarkup(): string | null {
+  if (!window.kofiwidget2) return null;
+  if (!kofiWidgetInitialized) {
+    window.kofiwidget2.init(
+      "Support project on Ko-fi",
+      "#3b3b3b",
+      "S6S61X1T35",
+    );
+    kofiWidgetInitialized = true;
+  }
+  return window.kofiwidget2.getHTML();
+}
+
 type RaidUniqueModel = {
   uniqueChance: number;
   uniqueWeights: Array<{ name: string; weight: number }>;
@@ -551,6 +577,7 @@ function App() {
   const [websiteVisitCount, setWebsiteVisitCount] = useState<number | null>(
     null,
   );
+  const [kofiFooterHtml, setKofiFooterHtml] = useState("");
   const inFlightItemValues = useRef<Set<number>>(new Set());
 
   useEffect(() => {
@@ -588,6 +615,30 @@ function App() {
         localStorage.setItem(VISIT_STORAGE_KEY, String(nextCount));
         setWebsiteVisitCount(nextCount);
       });
+  }, []);
+
+  useEffect(() => {
+    const SCRIPT_ID = "kofi-widget-2";
+    const existing = document.getElementById(
+      SCRIPT_ID,
+    ) as HTMLScriptElement | null;
+    const onLoad = () => {
+      const html = getKofiFooterMarkup();
+      if (html) setKofiFooterHtml(html);
+    };
+
+    if (existing) {
+      if (window.kofiwidget2) onLoad();
+      else existing.addEventListener("load", onLoad, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = SCRIPT_ID;
+    script.src = "https://storage.ko-fi.com/cdn/widget/Widget_2.js";
+    script.async = true;
+    script.onload = onLoad;
+    document.body.appendChild(script);
   }, []);
 
   useEffect(() => {
@@ -733,15 +784,6 @@ function App() {
     if (expectedRareRollsTotal <= 0) return 0;
     return (successfulRareRollsTotal / expectedRareRollsTotal) * 100;
   }, [expectedRareRollsTotal, successfulRareRollsTotal]);
-
-  const dryLevel = useMemo(() => {
-    if (totalKills < 20 || expectedRareRollsTotal <= 0) return "";
-    if (averageLuckPercent < 35) return "YOU ARE DRY";
-    if (averageLuckPercent < 60) return "Slightly dry";
-    if (averageLuckPercent > 140) return "Insane spooned";
-    if (averageLuckPercent > 110) return "Above average luck";
-    return "Average luck";
-  }, [averageLuckPercent, expectedRareRollsTotal, totalKills]);
 
   const latestLuckPercent = useMemo(() => {
     if (luckHistory.length === 0) return 0;
@@ -938,354 +980,368 @@ function App() {
         <div className="panel">
           <div className="panel-header">
             <h1>OSRS Drop Simulator</h1>
-            <p>Pick a boss, set kills, roll loot tab, and track your RNG.</p>
           </div>
 
           <div className="controls">
-          <div className="controls-rng">
-            <div className="rng-row">
-              <span>
-                Rare luck vs average player (
-                {`<=${Math.round(RARE_DROP_THRESHOLD * 100)}% drop chance`})
-              </span>
-              <strong>{averageLuckPercent.toFixed(1)}% vs 100%</strong>
-            </div>
-            <div className="rng-row">
-              <span>Luck graph (%)</span>
-              <strong>Latest: {latestLuckPercent.toFixed(1)}%</strong>
-            </div>
-            <div className="rng-chart">
-              {luckHistory.length === 0 ? (
-                <p className="empty">
-                  RNG distribution appears after your first kill batch.
-                </p>
-              ) : (
-                luckHistory.map((point) => (
-                  <div
-                    key={point.id}
-                    className="rng-bar"
-                    style={{
-                      height: `${Math.min(100, Math.max(6, point.luckPercent / 2))}%`,
-                    }}
-                    title={`${point.luckPercent.toFixed(1)}%`}
-                  />
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="controls-fields">
-            <label htmlFor="encounter-filter">Encounter Type</label>
-            <select
-              id="encounter-filter"
-              value={encounterFilter}
-              onChange={(event) =>
-                setEncounterFilter(event.target.value as EncounterFilter)
-              }
-            >
-              <option value="all">All</option>
-              <option value="bosses">Bosses</option>
-              <option value="raids">Raids</option>
-              <option value="raids-hard">Raids (Hard)</option>
-              <option value="dt2">DT2 Bosses</option>
-              <option value="dt2-hard">DT2 Bosses (Hard)</option>
-            </select>
-
-            <label htmlFor="monster">Monster/Raid or Boss</label>
-            <input
-              id="monster"
-              type="text"
-              list="monster-options"
-              value={monsterQuery}
-              onFocus={() => {
-                // If a boss is already selected, clear query on focus so full list shows.
-                if (
-                  selectedMonster &&
-                  monsterQuery.trim().toLowerCase() ===
-                    selectedMonsterLabel.trim().toLowerCase()
-                ) {
-                  setMonsterQuery("");
-                }
-              }}
-              onChange={(event) => {
-                const value = event.target.value;
-                setMonsterQuery(value);
-
-                const exactMatch = monsters.find(
-                  (monster) =>
-                    getDisplayMonsterLabel(
-                      monster,
-                      encounterFilter,
-                    ).toLowerCase() === value.toLowerCase(),
-                );
-                setSelectedMonsterId(exactMatch ? String(exactMatch.id) : "");
-              }}
-              placeholder="Select or type a boss/raid..."
-              disabled={isLoadingMonsters}
-            />
-            <datalist id="monster-options">
-              {filteredMonsters.map((monster) => (
-                <option
-                  key={monster.id}
-                  value={getDisplayMonsterLabel(monster, encounterFilter)}
-                />
-              ))}
-            </datalist>
-
-            <label htmlFor="kills">Kills and Raids count</label>
-            <input
-              id="kills"
-              type="number"
-              min={1}
-              max={MAX_KILL_INPUT}
-              value={killCountInput}
-              onChange={(event) => {
-                const value = event.target.value;
-                const parsed = Number.parseInt(value, 10);
-                if (Number.isFinite(parsed) && parsed > MAX_KILL_INPUT) {
-                  setKillCountInput(String(MAX_KILL_INPUT));
-                  return;
-                }
-                setKillCountInput(value);
-              }}
-              placeholder="e.g. 500"
-            />
-
-            {selectedMonster &&
-              getEncounterType(selectedMonster) === "raids" && (
-                <>
-                  {selectedMonster.id === -2001 && (
-                    <>
-                      <label htmlFor="cox-points">CoX points</label>
-                      <input
-                        id="cox-points"
-                        type="number"
-                        min={1000}
-                        max={200000}
-                        value={coxPointsInput}
-                        onChange={(event) =>
-                          setCoxPointsInput(event.target.value)
-                        }
-                        placeholder="e.g. 30000"
-                      />
-                    </>
-                  )}
-                  {selectedMonster.id === -2003 && (
-                    <>
-                      <label htmlFor="toa-level">ToA raid level</label>
-                      <input
-                        id="toa-level"
-                        type="number"
-                        min={0}
-                        max={700}
-                        value={toaLevelInput}
-                        onChange={(event) =>
-                          setToaLevelInput(event.target.value)
-                        }
-                        placeholder="e.g. 300"
-                      />
-                    </>
-                  )}
-                  {selectedMonster.id === -2002 && (
-                    <>
-                      <label htmlFor="tob-team-size">ToB team size</label>
-                      <input
-                        id="tob-team-size"
-                        type="number"
-                        min={1}
-                        max={5}
-                        value={tobTeamSizeInput}
-                        onChange={(event) =>
-                          setTobTeamSizeInput(event.target.value)
-                        }
-                        placeholder="e.g. 4"
-                      />
-                      <label htmlFor="tob-deathless">ToB deathless run</label>
-                      <select
-                        id="tob-deathless"
-                        value={tobDeathless ? "yes" : "no"}
-                        onChange={(event) =>
-                          setTobDeathless(event.target.value === "yes")
-                        }
-                      >
-                        <option value="yes">Yes</option>
-                        <option value="no">No</option>
-                      </select>
-                    </>
-                  )}
-                </>
-              )}
-          </div>
-
-          <div className="controls-actions">
-            <button
-              type="button"
-              className="kill-btn"
-              onClick={handleManualKill}
-              disabled={isLoadingMonsters || !selectedMonster}
-            >
-              {selectedMonster
-                ? `Kill ${getDisplayMonsterLabel(selectedMonster, encounterFilter)} x${killCountInput || "0"}`
-                : "Select a monster first"}
-            </button>
-
-            <button
-              type="button"
-              className="secondary-btn auto-btn"
-              onClick={() => setAutoKillEnabled((previous) => !previous)}
-              disabled={!selectedMonster}
-            >
-              {autoKillEnabled ? "Stop Auto Kill" : "Start Auto Kill"}
-            </button>
-
-            <button
-              type="button"
-              className="secondary-btn auto-btn reset-btn"
-              onClick={handleResetRun}
-              disabled={!selectedMonster}
-            >
-              Reset
-            </button>
-          </div>
-        </div>
-
-        <div className="predictor">
-          <label htmlFor="item-search">
-            Item Hunt Predictor (not the most accurate, but a good estimate)
-          </label>
-          <input
-            id="item-search"
-            type="text"
-            value={itemSearchQuery}
-            onChange={(event) => setItemSearchQuery(event.target.value)}
-            placeholder="Type item name (e.g. abyssal whip, tanzanite fang)..."
-          />
-          {itemSearchQuery.trim() && (
-            <div className="predictor-results">
-              {itemPredictions.length === 0 ? (
-                <p className="empty">
-                  No matching item drops found for this query.
-                </p>
-              ) : (
-                itemPredictions.map((prediction) => (
-                  <div
-                    className="predictor-row"
-                    key={`${prediction.monsterId}-${prediction.itemName}`}
-                  >
-                    <span>
-                      <strong>{prediction.monsterName}</strong> drops{" "}
-                      <em>{prediction.itemName}</em>
-                    </span>
-                    <span>
-                      Avg:{" "}
-                      {Math.ceil(prediction.expectedKills).toLocaleString(
-                        "en-US",
-                      )}{" "}
-                      kills
-                    </span>
-                    <span>
-                      90%:{" "}
-                      {Math.ceil(prediction.killsFor90Percent).toLocaleString(
-                        "en-US",
-                      )}{" "}
-                      kills
-                    </span>
-                    <span>
-                      Chance/kill: {(prediction.perKillChance * 100).toFixed(3)}
-                      %
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-
-        {error && <p className="error">{error}</p>}
-
-        <div className="results-meta">
-          <span>
-            {selectedMonster
-              ? getDisplayMonsterLabel(selectedMonster, encounterFilter)
-              : "No monster selected"}
-          </span>
-          <span>Killed: {totalKills.toLocaleString("en-US")}</span>
-          <span>{results.length} unique drops</span>
-          <span>Rare luck: {averageLuckPercent.toFixed(1)}%</span>
-          {dryLevel && <span className="dry-indicator">{dryLevel}</span>}
-        </div>
-
-        <div className="loot-tab-header">
-          <h3 className="loot-tab-title">
-            Loot Tab
-            {selectedMonster
-              ? ` | ${getDisplayMonsterLabel(selectedMonster, encounterFilter)} x${totalKills.toLocaleString("en-US")}`
-              : ""}
-          </h3>
-          <div className="loot-tab-values">
-            <span className="loot-tab-value">
-              Total GP: {formatGp(totalGpValue)}
-            </span>
-            <span className="loot-tab-value">{priceUpdatedLabel}</span>
-          </div>
-        </div>
-        <div className="results">
-          {results.length === 0 ? (
-            <p className="empty">No results yet. Run a simulation.</p>
-          ) : (
-            results.map((drop) => (
-              <div
-                className={`drop-card ${getDropCardClass(drop)}`}
-                key={drop.id}
-              >
-                {(() => {
-                  const resolvedId = getResolvedItemId(drop, itemIdByName);
-                  const iconDrop: DropResult = { ...drop, id: resolvedId };
-                  return (
-                    <img
-                      src={getIconCandidates(iconDrop)[0]}
-                      alt={drop.name}
-                      loading="lazy"
-                      onError={(event) => {
-                        const image = event.currentTarget;
-                        const candidates = getIconCandidates(iconDrop);
-                        const currentStep = Number.parseInt(
-                          image.dataset.fallbackStep ?? "0",
-                          10,
-                        );
-                        const nextStep = Number.isFinite(currentStep)
-                          ? currentStep + 1
-                          : 1;
-                        image.dataset.fallbackStep = String(nextStep);
-                        image.src =
-                          candidates[Math.min(nextStep, candidates.length - 1)];
+            <div className="controls-rng">
+              <div className="rng-row">
+                <span>
+                  Rare luck vs average player (
+                  {`<=${Math.round(RARE_DROP_THRESHOLD * 100)}% drop chance`})
+                </span>
+                <strong>{averageLuckPercent.toFixed(1)}% vs 100%</strong>
+              </div>
+              <div className="rng-row">
+                <span>Luck graph (%)</span>
+                <strong>Latest: {latestLuckPercent.toFixed(1)}%</strong>
+              </div>
+              <div className="rng-chart">
+                {luckHistory.length === 0 ? (
+                  <p className="empty">
+                    RNG distribution appears after your first kill batch.
+                  </p>
+                ) : (
+                  luckHistory.map((point) => (
+                    <div
+                      key={point.id}
+                      className="rng-bar"
+                      style={{
+                        height: `${Math.min(100, Math.max(6, point.luckPercent / 2))}%`,
                       }}
+                      title={`${point.luckPercent.toFixed(1)}%`}
                     />
-                  );
-                })()}
-                <p>{drop.name}</p>
-                <strong className={getQuantityTierClass(drop.quantity)}>
-                  x{drop.quantity.toLocaleString("en-US")}
-                </strong>
-                {!isCoinsDrop(drop.name) && (
-                  <span className="drop-card-gp">
-                    {formatGp(
-                      getDropUnitValue(drop, itemIdByName, itemValues) *
-                        drop.quantity,
-                    )}
-                  </span>
+                  ))
                 )}
               </div>
-            ))
-          )}
+            </div>
+
+            <div className="controls-fields">
+              <label htmlFor="encounter-filter">Encounter Type</label>
+              <select
+                id="encounter-filter"
+                value={encounterFilter}
+                onChange={(event) =>
+                  setEncounterFilter(event.target.value as EncounterFilter)
+                }
+              >
+                <option value="all">All</option>
+                <option value="bosses">Bosses</option>
+                <option value="raids">Raids</option>
+                <option value="raids-hard">Raids (Hard)</option>
+                <option value="dt2">DT2 Bosses</option>
+                <option value="dt2-hard">DT2 Bosses (Hard)</option>
+              </select>
+
+              <label htmlFor="monster">Monster/Raid or Boss</label>
+              <input
+                id="monster"
+                type="text"
+                list="monster-options"
+                value={monsterQuery}
+                onFocus={() => {
+                  // If a boss is already selected, clear query on focus so full list shows.
+                  if (
+                    selectedMonster &&
+                    monsterQuery.trim().toLowerCase() ===
+                      selectedMonsterLabel.trim().toLowerCase()
+                  ) {
+                    setMonsterQuery("");
+                  }
+                }}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setMonsterQuery(value);
+
+                  const exactMatch = monsters.find(
+                    (monster) =>
+                      getDisplayMonsterLabel(
+                        monster,
+                        encounterFilter,
+                      ).toLowerCase() === value.toLowerCase(),
+                  );
+                  setSelectedMonsterId(exactMatch ? String(exactMatch.id) : "");
+                }}
+                placeholder="Select or type a boss/raid..."
+                disabled={isLoadingMonsters}
+              />
+              <datalist id="monster-options">
+                {filteredMonsters.map((monster) => (
+                  <option
+                    key={monster.id}
+                    value={getDisplayMonsterLabel(monster, encounterFilter)}
+                  />
+                ))}
+              </datalist>
+
+              <label htmlFor="kills">Kills and Raids count</label>
+              <input
+                id="kills"
+                type="number"
+                min={1}
+                max={MAX_KILL_INPUT}
+                value={killCountInput}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  const parsed = Number.parseInt(value, 10);
+                  if (Number.isFinite(parsed) && parsed > MAX_KILL_INPUT) {
+                    setKillCountInput(String(MAX_KILL_INPUT));
+                    return;
+                  }
+                  setKillCountInput(value);
+                }}
+                placeholder="e.g. 500"
+              />
+
+              {selectedMonster &&
+                getEncounterType(selectedMonster) === "raids" && (
+                  <>
+                    {selectedMonster.id === -2001 && (
+                      <>
+                        <label htmlFor="cox-points">CoX points</label>
+                        <input
+                          id="cox-points"
+                          type="number"
+                          min={1000}
+                          max={200000}
+                          value={coxPointsInput}
+                          onChange={(event) =>
+                            setCoxPointsInput(event.target.value)
+                          }
+                          placeholder="e.g. 30000"
+                        />
+                      </>
+                    )}
+                    {selectedMonster.id === -2003 && (
+                      <>
+                        <label htmlFor="toa-level">ToA raid level</label>
+                        <input
+                          id="toa-level"
+                          type="number"
+                          min={0}
+                          max={700}
+                          value={toaLevelInput}
+                          onChange={(event) =>
+                            setToaLevelInput(event.target.value)
+                          }
+                          placeholder="e.g. 300"
+                        />
+                      </>
+                    )}
+                    {selectedMonster.id === -2002 && (
+                      <>
+                        <label htmlFor="tob-team-size">ToB team size</label>
+                        <input
+                          id="tob-team-size"
+                          type="number"
+                          min={1}
+                          max={5}
+                          value={tobTeamSizeInput}
+                          onChange={(event) =>
+                            setTobTeamSizeInput(event.target.value)
+                          }
+                          placeholder="e.g. 4"
+                        />
+                        <label htmlFor="tob-deathless">ToB deathless run</label>
+                        <select
+                          id="tob-deathless"
+                          value={tobDeathless ? "yes" : "no"}
+                          onChange={(event) =>
+                            setTobDeathless(event.target.value === "yes")
+                          }
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      </>
+                    )}
+                  </>
+                )}
+            </div>
+
+            <div className="controls-actions">
+              <button
+                type="button"
+                className="kill-btn"
+                onClick={handleManualKill}
+                disabled={isLoadingMonsters || !selectedMonster}
+              >
+                {selectedMonster
+                  ? `Kill ${getDisplayMonsterLabel(selectedMonster, encounterFilter)} x${killCountInput || "0"}`
+                  : "Select a monster first"}
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn auto-btn"
+                onClick={() => setAutoKillEnabled((previous) => !previous)}
+                disabled={!selectedMonster}
+              >
+                {autoKillEnabled ? "Stop Auto Kill" : "Start Auto Kill"}
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn auto-btn reset-btn"
+                onClick={handleResetRun}
+                disabled={!selectedMonster}
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+
+          <div className="predictor">
+            <label htmlFor="item-search">
+              Item Hunt Predictor (not the most accurate, but a good estimate)
+            </label>
+            <input
+              id="item-search"
+              type="text"
+              value={itemSearchQuery}
+              onChange={(event) => setItemSearchQuery(event.target.value)}
+              placeholder="Type item name (e.g. abyssal whip, tanzanite fang)..."
+            />
+            {itemSearchQuery.trim() && (
+              <div className="predictor-results">
+                {itemPredictions.length === 0 ? (
+                  <p className="empty">
+                    No matching item drops found for this query.
+                  </p>
+                ) : (
+                  itemPredictions.map((prediction) => (
+                    <div
+                      className="predictor-row"
+                      key={`${prediction.monsterId}-${prediction.itemName}`}
+                    >
+                      <span>
+                        <strong>{prediction.monsterName}</strong> drops{" "}
+                        <em>{prediction.itemName}</em>
+                      </span>
+                      <span>
+                        Avg:{" "}
+                        {Math.ceil(prediction.expectedKills).toLocaleString(
+                          "en-US",
+                        )}{" "}
+                        kills
+                      </span>
+                      <span>
+                        90%:{" "}
+                        {Math.ceil(prediction.killsFor90Percent).toLocaleString(
+                          "en-US",
+                        )}{" "}
+                        kills
+                      </span>
+                      <span>
+                        Chance/kill:{" "}
+                        {(prediction.perKillChance * 100).toFixed(3)}%
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {error && <p className="error">{error}</p>}
+
+          <div className="loot-tab-header">
+            <h3 className="loot-tab-title">
+              Loot Tab
+              {selectedMonster
+                ? ` | ${getDisplayMonsterLabel(selectedMonster, encounterFilter)} x${totalKills.toLocaleString("en-US")}`
+                : ""}
+            </h3>
+            <div className="loot-tab-values">
+              <span className="loot-tab-value">
+                Total GP: {formatGp(totalGpValue)}
+              </span>
+              <span className="loot-tab-value">{priceUpdatedLabel}</span>
+            </div>
+          </div>
+          <div className="results">
+            {results.length === 0 ? (
+              <p className="empty">No results yet. Run a simulation.</p>
+            ) : (
+              results.map((drop) => (
+                <div
+                  className={`drop-card ${getDropCardClass(drop)}`}
+                  key={drop.id}
+                >
+                  {(() => {
+                    const resolvedId = getResolvedItemId(drop, itemIdByName);
+                    const iconDrop: DropResult = { ...drop, id: resolvedId };
+                    return (
+                      <img
+                        src={getIconCandidates(iconDrop)[0]}
+                        alt={drop.name}
+                        loading="lazy"
+                        onError={(event) => {
+                          const image = event.currentTarget;
+                          const candidates = getIconCandidates(iconDrop);
+                          const currentStep = Number.parseInt(
+                            image.dataset.fallbackStep ?? "0",
+                            10,
+                          );
+                          const nextStep = Number.isFinite(currentStep)
+                            ? currentStep + 1
+                            : 1;
+                          image.dataset.fallbackStep = String(nextStep);
+                          image.src =
+                            candidates[
+                              Math.min(nextStep, candidates.length - 1)
+                            ];
+                        }}
+                      />
+                    );
+                  })()}
+                  <p>{drop.name}</p>
+                  <strong className={getQuantityTierClass(drop.quantity)}>
+                    x{drop.quantity.toLocaleString("en-US")}
+                  </strong>
+                  {!isCoinsDrop(drop.name) && (
+                    <span className="drop-card-gp">
+                      {formatGp(
+                        getDropUnitValue(drop, itemIdByName, itemValues) *
+                          drop.quantity,
+                      )}
+                    </span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </div>
       </div>
       <div className="footer-container">
         <div className="footer">
-          <p>
-            Website was visited: {websiteVisitCount?.toLocaleString("en-US")} x
-          </p>
+          {kofiFooterHtml ? (
+            <div
+              className="footer-kofi"
+              dangerouslySetInnerHTML={{ __html: kofiFooterHtml }}
+            />
+          ) : null}
+          <div className="footer-copy">
+            <p className="footer-visits">
+              Website was visited: {websiteVisitCount?.toLocaleString("en-US")}{" "}
+              x
+            </p>
+            <p className="footer-credit">
+              Created by{" "}
+              <span className="footer-credit-ign">IGN: SoP crVek</span>
+            </p>
+            <p className="footer-attrib">
+              Monster, drop, and GE data from the{" "}
+              <a
+                href="https://oldschool.runescape.wiki/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Old School RuneScape Wiki
+              </a>
+              . Independent fan simulator — not affiliated with, endorsed by, or
+              supported by Jagex or the wiki staff.
+            </p>
+          </div>
         </div>
       </div>
     </div>
