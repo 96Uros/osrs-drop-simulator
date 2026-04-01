@@ -1,8 +1,0 @@
-.container {
-  background-image: url("/src/assets/bg2.jpg");
-  background-position: center;
-  background-repeat: repeat-y;
-  width: 100vw;
-  height: 100vh;
-  z-index: 2;
-}
