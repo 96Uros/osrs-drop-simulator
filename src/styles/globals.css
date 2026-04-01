@@ -4,10 +4,22 @@
   box-sizing: border-box;
 }
 
-.container {
+.app-layout {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.container {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
+  height: 100vh;
+  min-height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
   background-image: url("../assets/bg2.jpg");
   background-position: center center;
   background-repeat: repeat-y;
@@ -18,20 +30,22 @@ body {
   font-family: Inter, "Segoe UI", Arial, sans-serif;
   background-color: #000000;
   color: #ececec;
-  height: 100vh;
+  min-height: 100vh;
   width: 100vw;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   z-index: -1;
 }
 
 #root {
   width: 100%;
-  height: 100%;
+  min-height: 100vh;
 }
 
 .panel {
   width: min(800px, 100vw);
-  height: 100vh;
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 0 auto;
   padding: 0.85rem;
   position: relative;
@@ -44,6 +58,37 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.footer-container {
+  flex-shrink: 0;
+  width: 100%;
+  height: 50px;
+  min-height: 50px;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-top: 1px solid rgba(255, 227, 176, 0.12);
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.footer {
+  width: min(800px, 100vw);
+  height: 100%;
+  margin: 0;
+  padding: 0 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.78rem;
+  color: rgba(236, 236, 236, 0.72);
+}
+
+.footer p {
+  margin: 0;
+  line-height: 1.2;
 }
 
 .kofi-float {

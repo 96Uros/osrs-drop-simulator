@@ -933,31 +933,15 @@ function App() {
   }, [lifetimeKills, selectedMonster, totalKills]);
 
   return (
-    <div className="container">
-      <div className="panel">
-        <a
-          className="kofi-float"
-          href="https://ko-fi.com/S6S61X1T35"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Support project on Ko-fi"
-          title="Support project on Ko-fi"
-        >
-          <span className="kofi-title">Ko-fi</span>
-          <span className="kofi-subtitle">Support project on Ko-fi</span>
-        </a>
-        <span className="visit-counter visit-counter-kofi">
-          Website was visited:{" "}
-          {websiteVisitCount === null
-            ? "loading..."
-            : `${websiteVisitCount.toLocaleString("en-US")} x`}
-        </span>
-        <div className="panel-header">
-          <h1>OSRS Drop Simulator</h1>
-          <p>Pick a boss, set kills, roll loot tab, and track your RNG.</p>
-        </div>
+    <div className="app-layout">
+      <div className="container">
+        <div className="panel">
+          <div className="panel-header">
+            <h1>OSRS Drop Simulator</h1>
+            <p>Pick a boss, set kills, roll loot tab, and track your RNG.</p>
+          </div>
 
-        <div className="controls">
+          <div className="controls">
           <div className="controls-rng">
             <div className="rng-row">
               <span>
@@ -1294,6 +1278,14 @@ function App() {
               </div>
             ))
           )}
+        </div>
+      </div>
+      </div>
+      <div className="footer-container">
+        <div className="footer">
+          <p>
+            Website was visited: {websiteVisitCount?.toLocaleString("en-US")} x
+          </p>
         </div>
       </div>
     </div>
