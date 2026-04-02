@@ -18,14 +18,14 @@ export const CUSTOM_ENCOUNTERS: Monster[] = [
       { id: 9001008, name: "Frozen tablet", quantity: "1", rarity: 1 / 25.8, rolls: 1 },
       { id: 9001009, name: "Ice quartz", quantity: "1", rarity: 1 / 206.6, rolls: 1 },
       // Standard table highlights.
-      { id: 3144, name: "Cooked karambwan", quantity: "3-4", rarity: 1 / 5.4, rolls: 1 },
+      { id: 2301, name: "Pineapple pizza", quantity: "3-4", rarity: 1 / 5.4, rolls: 1 },
       { id: 143, name: "Prayer potion(3)", quantity: "1", rarity: 1 / 5.4, rolls: 1 },
       { id: 12697, name: "Super combat potion(2)", quantity: "1", rarity: 1 / 5.4, rolls: 1 },
       { id: 454, name: "Coal", quantity: "216-325", rarity: 0.08, rolls: 1 },
       { id: 449, name: "Adamantite ore", quantity: "75-112", rarity: 0.08, rolls: 1 },
-      { id: 561, name: "Nature rune", quantity: "100-150", rarity: 0.09, rolls: 1 },
-      { id: 563, name: "Law rune", quantity: "100-150", rarity: 0.08, rolls: 1 },
-      { id: 565, name: "Blood rune", quantity: "100-150", rarity: 0.02, rolls: 1 },
+      { id: 4695, name: "Mist rune", quantity: "100-150", rarity: 0.08, rolls: 1 },
+      { id: 562, name: "Chaos rune", quantity: "100-150", rarity: 0.09, rolls: 1 },
+      { id: 566, name: "Soul rune", quantity: "666-1000", rarity: 0.02, rolls: 1 },
       // Tertiary.
       { id: 23083, name: "Brimstone key", quantity: "1", rarity: 1 / 50, rolls: 1 },
       { id: 19835, name: "Clue scroll (elite)", quantity: "1", rarity: 1 / 160, rolls: 1 },
