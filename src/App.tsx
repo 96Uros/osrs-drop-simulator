@@ -339,13 +339,88 @@ function loadAccountStore(): AccountStatsStore {
 }
 
 function isPetDropName(name: string): boolean {
-  const normalized = name.toLowerCase();
-  return (
-    /\bpet\b/.test(normalized) ||
-    /\b(jr\.?|cub|pup(py)?|kitten|chompy chick|guardian|snakeling|olmlet|hellpuppy|tangleroot|rocky|beaver|heron|phoenix|squirrel|noon|dusk|youngllef)\b/.test(
-      normalized,
-    )
-  );
+  // Match all "boss pets" from OSRS Wiki Pet list.
+  // We normalize by removing non-alphanumerics so apostrophes/dots/parentheses
+  // don't prevent matching (e.g. "Baby chinchompa (red)" -> babychinchompa).
+  const normalize = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+  const key = normalize(name);
+
+  // The full list is intentionally spelled as stable tokens (already normalized).
+  // This avoids relying on substrings like "pet" which can cause false positives.
+  const keys = [
+    "petchaoselemental",
+    "petdagannothsupreme",
+    "petdagannothprime",
+    "petdagannothrex",
+    "petpenancequeen",
+    "petkreearra",
+    "petgeneralgraardor",
+    "petzilyana",
+    "petkriltsutsaroth",
+    "babymole",
+    "princeblackdragon",
+    "kalphiteprincess",
+    "petsmokedevil",
+    "petkraken",
+    "petdarkcore",
+    "petsnakeling",
+    "chompychick",
+    "venenatispiderling",
+    "callistocub",
+    "vetionjr",
+    "scorpiasoffspring",
+    "tzrekjad",
+    "hellpuppy",
+    "abyssalorphan",
+    "heron",
+    "rockgolem",
+    "beaver",
+    "babychinchompa",
+    "bloodhound",
+    "giantsquirrel",
+    "tangleroot",
+    "riftguardian",
+    "rocky",
+    "phoenix",
+    "olmlet",
+    "skotos",
+    "jalnibrek",
+    "herbi",
+    "noon",
+    "vorki",
+    "lilzik",
+    "ikklehydra",
+    "smolcano",
+    "sraracha",
+    "youngllef",
+    "littlenightmare",
+    "lilcreator",
+    "tinytempor",
+    "nexling",
+    "abyssalprotector",
+    "tumekensguardian",
+    "muphin",
+    "wisp",
+    "butch",
+    "lilviathan",
+    "baron",
+    "scurry",
+    "smolheredit",
+    "quetzin",
+    "nid",
+    "huberte",
+    "moxi",
+    "bran",
+    "yami",
+    "dom",
+    "soup",
+    "gullpet",
+    "beef",
+  ];
+
+  return keys.some((k) => key.includes(k));
 }
 
 function getDropCardClass(drop: DropResult): string {
@@ -472,23 +547,25 @@ function getRaidUniqueModel(
   tobDeathless: boolean,
 ): RaidUniqueModel | null {
   if (monster.id === -2001) {
-    const uniqueChance =
-      clampNumber(coxPoints / 867_500, 0, 0.65) * (mode === "hard" ? 1.1 : 1);
+    // OSRS: 1% chance per 8,676 total points to obtain a unique loot (purple table),
+    // capped at 65.7% (570,000 points).
+    const uniqueChance = clampNumber(coxPoints / 867_600, 0, 0.657);
     return {
-      uniqueChance: clampNumber(uniqueChance, 0, 0.75),
+      uniqueChance,
       uniqueWeights: [
+        // OSRS purple table weights (sum = 69).
         { name: "Dexterous prayer scroll", weight: 20 },
         { name: "Arcane prayer scroll", weight: 20 },
-        { name: "Kodai insignia", weight: 4 },
-        { name: "Dragon hunter crossbow", weight: 8 },
-        { name: "Dinh's bulwark", weight: 6 },
-        { name: "Ancestral hat", weight: 6 },
-        { name: "Ancestral robe top", weight: 6 },
-        { name: "Ancestral robe bottom", weight: 6 },
-        { name: "Dragon claws", weight: 6 },
-        { name: "Elder maul", weight: 4 },
-        { name: "Twisted bow", weight: 4 },
-        { name: "Twisted buckler", weight: 8 },
+        { name: "Twisted buckler", weight: 4 },
+        { name: "Dragon hunter crossbow", weight: 4 },
+        { name: "Dinh's bulwark", weight: 3 },
+        { name: "Ancestral hat", weight: 3 },
+        { name: "Ancestral robe top", weight: 3 },
+        { name: "Ancestral robe bottom", weight: 3 },
+        { name: "Dragon claws", weight: 3 },
+        { name: "Elder maul", weight: 2 },
+        { name: "Kodai insignia", weight: 2 },
+        { name: "Twisted bow", weight: 2 },
       ],
     };
   }
@@ -531,21 +608,83 @@ function getRaidUniqueModel(
   }
 
   if (monster.id === -2003) {
-    const uniqueChance = clampNumber(
+    // Base unique rate model: keep existing approximation of purple roll frequency.
+    const baseUniqueChance = clampNumber(
       ((toaLevel + 5) / 3500) * (mode === "hard" ? 1.12 : 1),
       0.005,
       0.55,
     );
+
+    // OSRS: purple table selection weights and entry-mode reduction are defined in
+    // Module:Tombs_of_Amascut_loot. We model it in terms of:
+    // - Reweighting for raid levels > 300 (decrease fang/lightbearer, increase others)
+    // - Entry mode reduction for items gated at raid_level 150 (divide those rates by 50)
+    // Then we scale the overall uniqueChance by the effective weight sum ratio.
+    const raidLevel = toaLevel;
+
+    // Base purple weights (sum = 240) for raid_level <= 300.
+    let fangWeight = 70;
+    let lightbearerWeight = 70;
+    const wardBase = 30;
+    const shadowBase = 10;
+    const masoriBase = 20; // each piece
+
+    if (raidLevel > 300) {
+      if (raidLevel >= 500) {
+        fangWeight = 30;
+        lightbearerWeight = 35;
+      } else if (raidLevel >= 450) {
+        fangWeight = 40 - Math.floor((raidLevel - 450) * 0.2);
+        lightbearerWeight = 40 - Math.floor((raidLevel - 450) * 0.1);
+      } else if (raidLevel >= 400) {
+        fangWeight = 40;
+        lightbearerWeight = 50 - Math.floor((raidLevel - 400) * 0.2);
+      } else if (raidLevel >= 350) {
+        fangWeight = 60 - Math.floor((raidLevel - 350) * 0.4);
+        lightbearerWeight = 60 - Math.floor((raidLevel - 350) * 0.2);
+      } else {
+        // 301..349
+        fangWeight = 70 - Math.floor((raidLevel - 300) * 0.2);
+        lightbearerWeight = 70 - Math.floor((raidLevel - 300) * 0.2);
+      }
+    }
+
+    // Apply entry-mode gating. In the wiki module:
+    // - items with level = 150 get divided by 50 when raid_level < 150
+    // - fang/lightbearer get divided by 50 when raid_level < 50
+    const gateFactor150 = raidLevel < 150 ? 1 / 50 : 1;
+    const gateFactor50 = raidLevel < 50 ? 1 / 50 : 1;
+
+    const wardWeight = wardBase * gateFactor150;
+    const shadowWeight = shadowBase * gateFactor150;
+    const masoriWeight = masoriBase * gateFactor150;
+    const fangEffectiveWeight = fangWeight * gateFactor50;
+    const lightbearerEffectiveWeight = lightbearerWeight * gateFactor50;
+
+    const sumBaseWeights = fangWeight + lightbearerWeight + wardBase + shadowBase + 3 * masoriBase;
+    const sumEffectiveWeights =
+      fangEffectiveWeight +
+      lightbearerEffectiveWeight +
+      wardWeight +
+      shadowWeight +
+      3 * masoriWeight;
+
+    const uniqueChance = clampNumber(
+      baseUniqueChance * (sumEffectiveWeights / sumBaseWeights),
+      0,
+      0.55,
+    );
+
     return {
       uniqueChance,
       uniqueWeights: [
-        { name: "Osmumten's fang", weight: 7 },
-        { name: "Tumeken's shadow", weight: 1 },
-        { name: "Elidinis' ward", weight: 3 },
-        { name: "Lightbearer", weight: 7 },
-        { name: "Masori mask", weight: 2 },
-        { name: "Masori body", weight: 2 },
-        { name: "Masori chaps", weight: 2 },
+        { name: "Osmumten's fang", weight: fangEffectiveWeight },
+        { name: "Tumeken's shadow", weight: shadowWeight },
+        { name: "Elidinis' ward", weight: wardWeight },
+        { name: "Lightbearer", weight: lightbearerEffectiveWeight },
+        { name: "Masori mask", weight: masoriWeight },
+        { name: "Masori body", weight: masoriWeight },
+        { name: "Masori chaps", weight: masoriWeight },
       ],
     };
   }
@@ -1307,7 +1446,7 @@ function App() {
                     <strong className={getQuantityTierClass(drop.quantity)}>
                       x{drop.quantity.toLocaleString("en-US")}
                     </strong>
-                    {!isCoinsDrop(drop.name) && (
+                    {!isCoinsDrop(drop.name) && !isPetDropName(drop.name) && (
                       <span className="drop-card-gp">
                         {formatGp(
                           getDropUnitValue(drop, itemIdByName, itemValues) *
