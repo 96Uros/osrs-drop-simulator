@@ -538,6 +538,57 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function parseQuantityBounds(quantity: string | null): { min: number; max: number } | null {
+  if (!quantity) return null;
+  const normalized = quantity.replaceAll(",", "").trim();
+  const parts = normalized.split("-");
+  const min = Number.parseInt(parts[0] ?? "", 10);
+  if (!Number.isFinite(min)) return null;
+  if (parts.length < 2) return { min, max: min };
+  const max = Number.parseInt(parts[1] ?? "", 10);
+  if (!Number.isFinite(max) || max < min) return { min, max: min };
+  return { min, max };
+}
+
+function formatScaledQuantity(min: number, max: number): string {
+  if (min === max) return String(min);
+  return `${min}-${max}`;
+}
+
+function getBarrowsScaledDrops(drops: MonsterDrop[], rewardPotential: number) {
+  // Ratio in [0..1]; max potential (wiki) is treated as 1012 in this simulator.
+  const ratio = clampNumber(rewardPotential, 0, 1012) / 1012;
+
+  const scaleByPotentialNames = new Set([
+    "Coins",
+    "Mind rune",
+    "Chaos rune",
+    "Death rune",
+    "Blood rune",
+    "Bolt rack",
+    "Loop half of key",
+    "Tooth half of key",
+    "Dragon med helm",
+  ]);
+
+  return drops.map((drop) => {
+    if (!scaleByPotentialNames.has(drop.name)) return drop;
+
+    const bounds = parseQuantityBounds(drop.quantity);
+    if (!bounds) return drop;
+
+    const scaledMin = Math.max(1, Math.floor(bounds.min * ratio));
+    const scaledMax = Math.max(scaledMin, Math.floor(bounds.max * ratio));
+    const scaledQuantity = formatScaledQuantity(scaledMin, scaledMax);
+
+    // Coins are guaranteed in our barrows table; keep their rarity as-is.
+    const scaledRarity =
+      drop.name === "Coins" ? drop.rarity : Math.min(1, drop.rarity * ratio);
+
+    return { ...drop, quantity: scaledQuantity, rarity: scaledRarity };
+  });
+}
+
 function getRaidUniqueModel(
   monster: Monster,
   mode: EncounterMode,
@@ -689,6 +740,44 @@ function getRaidUniqueModel(
     };
   }
 
+  if (monster.id === -500) {
+    // Barrows (wiki: Chest (Barrows)), approximation:
+    // With all 6 brothers slain, chance to receive at least one Barrows equipment piece
+    // is about 1/15.01 per chest. We'll model "uniqueChance" as a single equipment drop
+    // chosen uniformly from the 24 equipment items.
+    const uniqueChance = 1 / 15.01;
+
+    return {
+      uniqueChance: clampNumber(uniqueChance, 0, 0.75),
+      uniqueWeights: [
+        { name: "Ahrim's hood", weight: 1 },
+        { name: "Ahrim's robetop", weight: 1 },
+        { name: "Ahrim's robeskirt", weight: 1 },
+        { name: "Ahrim's staff", weight: 1 },
+        { name: "Dharok's helm", weight: 1 },
+        { name: "Dharok's platebody", weight: 1 },
+        { name: "Dharok's platelegs", weight: 1 },
+        { name: "Dharok's greataxe", weight: 1 },
+        { name: "Guthan's helm", weight: 1 },
+        { name: "Guthan's platebody", weight: 1 },
+        { name: "Guthan's chainskirt", weight: 1 },
+        { name: "Guthan's warspear", weight: 1 },
+        { name: "Karil's coif", weight: 1 },
+        { name: "Karil's leathertop", weight: 1 },
+        { name: "Karil's leatherskirt", weight: 1 },
+        { name: "Karil's crossbow", weight: 1 },
+        { name: "Torag's helm", weight: 1 },
+        { name: "Torag's platebody", weight: 1 },
+        { name: "Torag's platelegs", weight: 1 },
+        { name: "Torag's hammers", weight: 1 },
+        { name: "Verac's helm", weight: 1 },
+        { name: "Verac's brassard", weight: 1 },
+        { name: "Verac's plateskirt", weight: 1 },
+        { name: "Verac's flail", weight: 1 },
+      ],
+    };
+  }
+
   return null;
 }
 
@@ -701,10 +790,18 @@ function App() {
   const [monsterQuery, setMonsterQuery] = useState("");
   const [killCountInput, setKillCountInput] = useState("1");
   const [autoKillEnabled, setAutoKillEnabled] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [coxPointsInput, setCoxPointsInput] = useState("30000");
   const [toaLevelInput, setToaLevelInput] = useState("300");
   const [tobTeamSizeInput, setTobTeamSizeInput] = useState("4");
   const [tobDeathless, setTobDeathless] = useState(true);
+  // OSRS Barrows: reward potential affects which main-table items show up,
+  // but unique equipment chance is ~flat when all 6 brothers are slain.
+  // Wiki "optimal profit" is ~86%-88% of max potential (~880-890).
+  // Barrows: user-facing control in percent.
+  // Internally we convert percent -> reward potential (0..1012).
+  const [barrowsRewardPercentInput, setBarrowsRewardPercentInput] =
+    useState("87");
   const [results, setResults] = useState<DropResult[]>([]);
   const [totalKills, setTotalKills] = useState(0);
   const [lifetimeKills, setLifetimeKills] = useState(0);
@@ -872,8 +969,11 @@ function App() {
             (monster) => getEncounterType(monster) === encounterFilter,
           );
 
+    // Safety: only show encounters that have actual drops.
+    const byTypeWithDrops = byType.filter((monster) => monster.drops.length > 0);
+
     const query = monsterQuery.trim().toLowerCase();
-    if (!query) return byType;
+    if (!query) return byTypeWithDrops;
 
     return byType.filter((monster) => {
       const label = getMonsterLabel(monster).toLowerCase();
@@ -920,6 +1020,24 @@ function App() {
       if (!selectedMonster) return;
       const mode = getSimulationMode(encounterFilter, categoryHardMode);
       const modeDrops = getDropsForMode(selectedMonster, mode);
+      const barrowsRewardPotential =
+        selectedMonster.id === -500
+          ? clampNumber(
+              (clampNumber(
+                Number.parseFloat(barrowsRewardPercentInput) || 87,
+                0,
+                100,
+              ) /
+                100) *
+                1012,
+              0,
+              1012,
+            )
+          : 1012;
+      const dropsForSim =
+        selectedMonster.id === -500
+          ? getBarrowsScaledDrops(modeDrops, barrowsRewardPotential)
+          : modeDrops;
       const raidUniqueModel = getRaidUniqueModel(
         selectedMonster,
         mode,
@@ -932,7 +1050,7 @@ function App() {
         clampNumber(Number.parseInt(tobTeamSizeInput, 10) || 4, 1, 5),
         tobDeathless,
       );
-      const batch = runDropSimulation(modeDrops, kills, raidUniqueModel);
+      const batch = runDropSimulation(dropsForSim, kills, raidUniqueModel);
       setResults((previous) => mergeDropResults(previous, batch.drops));
       setTotalKills((previous) => previous + kills);
       setExpectedRareRollsTotal(
@@ -956,6 +1074,7 @@ function App() {
     [
       categoryHardMode,
       coxPointsInput,
+      barrowsRewardPercentInput,
       encounterFilter,
       selectedMonster,
       toaLevelInput,
@@ -1018,6 +1137,15 @@ function App() {
 
     return () => window.clearInterval(interval);
   }, [applyBatch, autoKillEnabled, killCountInput, selectedMonster]);
+
+  useEffect(() => {
+    if (!isHelpOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsHelpOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isHelpOpen]);
 
   useEffect(() => {
     const missingIds = results
@@ -1108,8 +1236,103 @@ function App() {
       <div className="container">
         <div className="panel">
           <div className="panel-header">
-            <h1>OSRS Drop Simulator</h1>
+            <div className="panel-title-row">
+              <h1>OSRS Drop Simulator</h1>
+            </div>
           </div>
+
+          {isHelpOpen && (
+            <div
+              className="help-modal-overlay"
+              role="dialog"
+              aria-modal="true"
+              onClick={() => setIsHelpOpen(false)}
+            >
+              <div
+                className="help-modal"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="help-modal-header">
+                  <h2>How this simulator calculates drops</h2>
+                  <button
+                    type="button"
+                    className="help-modal-close"
+                    aria-label="Close"
+                    onClick={() => setIsHelpOpen(false)}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="help-modal-body">
+                  <p>
+                    This is a simplified fan model (not 1:1 “game code”), but it
+                    reproduces the main OSRS mechanics: purple/unique selection,
+                    weighted tables, and point-based split uniques (where
+                    applicable).
+                  </p>
+
+                  <details open>
+                    <summary>Bosses & encounters (what “clicks” mean)</summary>
+                    <p>
+                      “Kills and Raids count” is the number of separate runs/chests
+                      you simulate. The app then aggregates all drops into the loot
+                      tab.
+                    </p>
+                  </details>
+
+                  <details>
+                    <summary>CoX (Chambers of Xeric) unique “purple”</summary>
+                    <p>
+                      CoX has a separate model: first, the chance for receiving
+                      unique loot is simulated from your <code>CoX points</code>
+                      (OSRS: 1% per 8,676 points, capped at 65.7%). If the unique
+                      happens, the item is selected from the purple table by weight
+                      and this app assigns one unique per simulated run.
+                    </p>
+                  </details>
+
+                  <details>
+                    <summary>ToA (Tombs of Amascut) purple table + entry mode</summary>
+                    <p>
+                      ToA uses purple reweighting (305+) and entry-mode gating (cutoff
+                      at raid level 150), then selects the unique by weight. In this
+                      app, the “unique roll” is treated as a simplified trigger per run.
+                    </p>
+                  </details>
+
+                  <details>
+                    <summary>ToB / DT2 “Hard (CM / HM / awakened)”</summary>
+                    <p>
+                      When you enable <b>Hard</b> in the UI, the simulator increases
+                      unique rates only for the relevant encounter types (ToB/DT2/raids),
+                      matching the CM/HM/awakened variants.
+                    </p>
+                  </details>
+
+                  <details>
+                    <summary>GE prices (“Prices updated …”)</summary>
+                    <p>
+                      The app periodically fetches live Grand Exchange prices and uses
+                      them to compute the “Total GP” and per-drop GP values. The label
+                      <code>Prices updated …</code> shows when the last refresh happened
+                      (it updates roughly every 60 seconds).
+                    </p>
+                  </details>
+
+                  <details>
+                    <summary>Barrows (Chest (Barrows)) reward potential</summary>
+                    <p>
+                      Barrows is modeled as: unique equipment is ~flat (~1/15),
+                      while main-table items (runes, bolt racks, key halves, dragon med helm)
+                      are scaled by your <code>reward %</code> input. Dragon med helm is
+                      prevented from rolling when a Barrows equipment unique is hit.
+                    </p>
+                  </details>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="controls">
             <div className="controls-rng">
@@ -1345,6 +1568,27 @@ function App() {
                     )}
                   </>
                 )}
+
+              {selectedMonster && selectedMonster.id === -500 && (
+                <>
+                  <label htmlFor="barrows-reward-percent">
+                    Barrows reward %
+                  </label>
+                  <input
+                    id="barrows-reward-percent"
+                    type="number"
+                    step={0.1}
+                    min={0}
+                    max={100}
+                    value={barrowsRewardPercentInput}
+                    onChange={(event) =>
+                      setBarrowsRewardPercentInput(event.target.value)
+                    }
+                    placeholder="e.g. 86-88"
+                    title="Controls main-table items (runes, bolt racks, key halves, dragon med helm). Value is a % of max reward potential (0-100). Uniques stay ~flat (~1/15 with all 6 brothers)."
+                  />
+                </>
+              )}
             </div>
 
             {error && (
@@ -1404,6 +1648,15 @@ function App() {
                   Total GP: {formatGp(totalGpValue)}
                 </span>
                 <span className="loot-tab-value">{priceUpdatedLabel}</span>
+                <button
+                  type="button"
+                  className="loot-tab-value help-btn"
+                  aria-label="About calculation"
+                  onClick={() => setIsHelpOpen(true)}
+                  title="How calculations work"
+                >
+                  ?
+                </button>
               </div>
             </div>
             <div className="results">

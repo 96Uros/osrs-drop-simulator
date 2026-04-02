@@ -451,4 +451,62 @@ export const CUSTOM_ENCOUNTERS: Monster[] = [
       { id: -22001, name: "Tumeken's guardian", quantity: "1", rarity: 0.001, rolls: 1 },
     ],
   },
+  {
+    id: -500,
+    name: "Barrows",
+    wiki_name: "Chest (Barrows)",
+    // Approximation:
+    // - assume all 6 brothers are killed (full eligible set of 24 equipment items)
+    // - simulate at most one Barrows equipment drop per chest via raidUniqueModel
+    // - elite clue is blocked when a Barrows equipment drop is rolled (mirrors wiki logic)
+    drops: [
+      // Commons (guaranteed baseline so every chest yields loot).
+      { id: 995, name: "Coins", quantity: "2-774", rarity: 1, rolls: 1 },
+
+      // Barrows main table (high-frequency alongside equipment).
+      // From OSRS Wiki: values shown here are estimated probabilities for a full (all 6 brothers slain) chest.
+      { id: 558, name: "Mind rune", quantity: "253-336", rarity: (7 * 125) / 1012, rolls: 1 },
+      { id: 562, name: "Chaos rune", quantity: "112-139", rarity: (7 * 125) / 1012, rolls: 1 },
+      { id: 560, name: "Death rune", quantity: "70-83", rarity: (7 * 125) / 1012, rolls: 1 },
+      { id: 565, name: "Blood rune", quantity: "37-43", rarity: (7 * 125) / 1012, rolls: 1 },
+      { id: 9142, name: "Bolt rack", quantity: "35-40", rarity: (7 * 125) / 1012, rolls: 1 },
+      { id: 9144, name: "Loop half of key", quantity: "1", rarity: (7 * 3) / 1012, rolls: 1 },
+      { id: 9143, name: "Tooth half of key", quantity: "1", rarity: (7 * 3) / 1012, rolls: 1 },
+      { id: 1149, name: "Dragon med helm", quantity: "1", rarity: 7 / 1012, rolls: 1 },
+
+      // Barrows equipment (selected via raidUniqueModel for this encounter).
+      { id: -500001, name: "Ahrim's hood", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500002, name: "Ahrim's robetop", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500003, name: "Ahrim's robeskirt", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500004, name: "Ahrim's staff", quantity: "1", rarity: 0.001, rolls: 1 },
+
+      { id: -500005, name: "Dharok's helm", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500006, name: "Dharok's platebody", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500007, name: "Dharok's platelegs", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500008, name: "Dharok's greataxe", quantity: "1", rarity: 0.001, rolls: 1 },
+
+      { id: -500009, name: "Guthan's helm", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500010, name: "Guthan's platebody", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500011, name: "Guthan's chainskirt", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500012, name: "Guthan's warspear", quantity: "1", rarity: 0.001, rolls: 1 },
+
+      { id: -500013, name: "Karil's coif", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500014, name: "Karil's leathertop", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500015, name: "Karil's leatherskirt", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500016, name: "Karil's crossbow", quantity: "1", rarity: 0.001, rolls: 1 },
+
+      { id: -500017, name: "Torag's helm", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500018, name: "Torag's platebody", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500019, name: "Torag's platelegs", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500020, name: "Torag's hammers", quantity: "1", rarity: 0.001, rolls: 1 },
+
+      { id: -500021, name: "Verac's helm", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500022, name: "Verac's brassard", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500023, name: "Verac's plateskirt", quantity: "1", rarity: 0.001, rolls: 1 },
+      { id: -500024, name: "Verac's flail", quantity: "1", rarity: 0.001, rolls: 1 },
+
+      // Tertiary (not rolled when a Barrows equipment drop is broadcasted).
+      { id: 19835, name: "Clue scroll (elite)", quantity: "1", rarity: 1 / 200, rolls: 1 },
+    ],
+  },
 ];
