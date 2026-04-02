@@ -314,6 +314,17 @@ function formatGp(value: number): string {
   return `${Math.round(value).toLocaleString("en-US")} gp`;
 }
 
+type KillFormField = "monster" | "kills";
+
+function scrollFieldIntoView(elementId: string) {
+  requestAnimationFrame(() => {
+    document.getElementById(elementId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  });
+}
+
 function loadAccountStore(): AccountStatsStore {
   try {
     const raw = localStorage.getItem(ACCOUNT_STORAGE_KEY);
@@ -418,10 +429,7 @@ function getSimulationMode(
   filter: EncounterFilter,
   categoryHardMode: boolean,
 ): EncounterMode {
-  if (
-    categoryHardMode &&
-    (filter === "raids" || filter === "dt2")
-  ) {
+  if (categoryHardMode && (filter === "raids" || filter === "dt2")) {
     return "hard";
   }
   return "normal";
@@ -439,10 +447,7 @@ function getDropsForMode(monster: Monster, mode: EncounterMode): MonsterDrop[] {
     if (drop.rarity > RARE_DROP_THRESHOLD) return drop;
     // Awakened DT2: ~3x unique rate (wiki); skip rolls at exactly the rare threshold so
     // standard ~2% supply drops are not tripled alongside the unique table.
-    if (
-      encounterType === "dt2" &&
-      drop.rarity >= RARE_DROP_THRESHOLD
-    ) {
+    if (encounterType === "dt2" && drop.rarity >= RARE_DROP_THRESHOLD) {
       return drop;
     }
     return {
@@ -493,11 +498,7 @@ function getRaidUniqueModel(
     // Personal loot: one player receives the unique — approximate with equal split across team size.
     const teamPurpleChance =
       (mode === "hard" ? 1 / 7.7 : 1 / 9.1) * (tobDeathless ? 1 : 1 / 1.12);
-    const uniqueChance = clampNumber(
-      teamPurpleChance / teamSize,
-      0,
-      0.45,
-    );
+    const uniqueChance = clampNumber(teamPurpleChance / teamSize, 0, 0.45);
     // Monumental chest (OSRS wiki): among uniques, rarities are 1/x; P ∝ 1/x.
     // Normal — hilt 1/2.375, weapons/justiciar 1/9.5 each, scythe 1/19 → weights 8:2:2:2:2:2:1 (sum 19).
     // Hard — hilt 1/2.571, others 1/9, scythe 1/18 → weights 7:2:2:2:2:2:1 (sum 18).
@@ -577,6 +578,9 @@ function App() {
   const [priceTick, setPriceTick] = useState(0);
   const [isLoadingMonsters, setIsLoadingMonsters] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [killFormErrors, setKillFormErrors] = useState<
+    Partial<Record<KillFormField, boolean>>
+  >({});
   const [kofiFooterHtml, setKofiFooterHtml] = useState("");
   const inFlightItemValues = useRef<Set<number>>(new Set());
 
@@ -821,17 +825,30 @@ function App() {
 
   const handleManualKill = () => {
     const kills = Number.parseInt(killCountInput, 10);
-    if (!Number.isFinite(kills) || kills <= 0 || kills > MAX_KILL_INPUT) {
+    const killsInvalid =
+      !Number.isFinite(kills) || kills <= 0 || kills > MAX_KILL_INPUT;
+    const monsterMissing = !selectedMonster;
+
+    if (killsInvalid || monsterMissing) {
+      setKillFormErrors({
+        kills: killsInvalid,
+        monster: monsterMissing,
+      });
+      if (monsterMissing) {
+        setError(
+          "Choose a boss or raid: set Encounter type (dropdown above), then pick a name from the list or type it exactly — on some phones the suggestion list is limited.",
+        );
+        scrollFieldIntoView("monster");
+        return;
+      }
       setError(
         `Enter a valid kill count (1-${MAX_KILL_INPUT.toLocaleString("en-US")}).`,
       );
-      return;
-    }
-    if (!selectedMonster) {
-      setError("Please select a monster first.");
+      scrollFieldIntoView("kills");
       return;
     }
 
+    setKillFormErrors({});
     setError(null);
     applyBatch(kills);
   };
@@ -844,6 +861,7 @@ function App() {
     setLuckHistory([]);
     setAutoKillEnabled(false);
     setError(null);
+    setKillFormErrors({});
   };
 
   useEffect(() => {
@@ -922,6 +940,7 @@ function App() {
     setSuccessfulRareRollsTotal(0);
     setLuckHistory([]);
     setError(null);
+    setKillFormErrors({});
     if (!selectedMonster) {
       setLifetimeKills(0);
       return;
@@ -988,10 +1007,15 @@ function App() {
               <label htmlFor="encounter-filter">Encounter type</label>
               <select
                 id="encounter-filter"
+                className="controls-touch-select"
                 value={encounterFilter}
-                onChange={(event) =>
-                  setEncounterFilter(event.target.value as EncounterFilter)
-                }
+                onChange={(event) => {
+                  setEncounterFilter(event.target.value as EncounterFilter);
+                  setKillFormErrors((previous) => ({
+                    ...previous,
+                    monster: false,
+                  }));
+                }}
               >
                 <option value="all">All encounters (incl. bosses)</option>
                 <option value="raids">Raids</option>
@@ -1003,10 +1027,15 @@ function App() {
                   <label htmlFor="category-mode">Mode</label>
                   <select
                     id="category-mode"
+                    className="controls-touch-select"
                     value={categoryHardMode ? "hard" : "normal"}
-                    onChange={(event) =>
-                      setCategoryHardMode(event.target.value === "hard")
-                    }
+                    onChange={(event) => {
+                      setCategoryHardMode(event.target.value === "hard");
+                      setKillFormErrors((previous) => ({
+                        ...previous,
+                        monster: false,
+                      }));
+                    }}
                   >
                     <option value="normal">Normal</option>
                     <option value="hard">Hard (CM / HM / awakened)</option>
@@ -1014,11 +1043,23 @@ function App() {
                 </>
               )}
 
-              <label htmlFor="monster">Monster/Raid or Boss</label>
+              <label
+                className={
+                  killFormErrors.monster ? "controls-label--error" : undefined
+                }
+                htmlFor="monster"
+              >
+                Monster/Raid or Boss
+              </label>
               <input
                 id="monster"
                 type="text"
                 list="monster-options"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-invalid={killFormErrors.monster ? true : undefined}
+                className={killFormErrors.monster ? "field-error" : undefined}
                 value={monsterQuery}
                 onFocus={() => {
                   // If a boss is already selected, clear query on focus so full list shows.
@@ -1033,6 +1074,10 @@ function App() {
                 onChange={(event) => {
                   const value = event.target.value;
                   setMonsterQuery(value);
+                  setKillFormErrors((previous) => ({
+                    ...previous,
+                    monster: false,
+                  }));
 
                   const exactMatch = monsters.find(
                     (monster) =>
@@ -1060,15 +1105,29 @@ function App() {
                 ))}
               </datalist>
 
-              <label htmlFor="kills">Kills and Raids count</label>
+              <label
+                className={
+                  killFormErrors.kills ? "controls-label--error" : undefined
+                }
+                htmlFor="kills"
+              >
+                Kills and Raids count
+              </label>
               <input
                 id="kills"
                 type="number"
                 min={1}
                 max={MAX_KILL_INPUT}
+                inputMode="numeric"
+                aria-invalid={killFormErrors.kills ? true : undefined}
+                className={killFormErrors.kills ? "field-error" : undefined}
                 value={killCountInput}
                 onChange={(event) => {
                   const value = event.target.value;
+                  setKillFormErrors((previous) => ({
+                    ...previous,
+                    kills: false,
+                  }));
                   const parsed = Number.parseInt(value, 10);
                   if (Number.isFinite(parsed) && parsed > MAX_KILL_INPUT) {
                     setKillCountInput(String(MAX_KILL_INPUT));
@@ -1132,6 +1191,7 @@ function App() {
                         <label htmlFor="tob-deathless">ToB deathless run</label>
                         <select
                           id="tob-deathless"
+                          className="controls-touch-select"
                           value={tobDeathless ? "yes" : "no"}
                           onChange={(event) =>
                             setTobDeathless(event.target.value === "yes")
@@ -1146,16 +1206,22 @@ function App() {
                 )}
             </div>
 
+            {error && (
+              <p className="error controls-error" role="alert">
+                {error}
+              </p>
+            )}
+
             <div className="controls-actions">
               <button
                 type="button"
                 className="kill-btn"
                 onClick={handleManualKill}
-                disabled={isLoadingMonsters || !selectedMonster}
+                disabled={isLoadingMonsters}
               >
                 {selectedMonster
                   ? `Kill ${getDisplayMonsterLabel(selectedMonster, encounterFilter, categoryHardMode)} x${killCountInput || "0"}`
-                  : "Select a monster first"}
+                  : "Kill (choose boss/raid above)"}
               </button>
 
               <button
@@ -1177,8 +1243,6 @@ function App() {
               </button>
             </div>
           </div>
-
-          {error && <p className="error">{error}</p>}
 
           <div
             className={

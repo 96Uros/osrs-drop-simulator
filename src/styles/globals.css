@@ -258,10 +258,52 @@ body {
   align-items: center;
 }
 
+.controls-field-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #b0b0b0;
+}
+
+.controls-field-hint--full {
+  grid-column: 1 / -1;
+}
+
+.controls-field-hint__kbd {
+  padding: 0.08rem 0.28rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.76rem;
+  color: #e8e8e8;
+  white-space: nowrap;
+}
+
 .controls label {
   font-size: 0.82rem;
   color: #cfcfcf;
   line-height: 1.2;
+}
+
+.controls-label--error {
+  color: #ff9d9d;
+}
+
+.controls input.field-error,
+.controls select.field-error {
+  border-color: #c44 !important;
+  box-shadow: 0 0 0 2px rgba(204, 68, 68, 0.35);
+}
+
+.controls-touch-select {
+  cursor: pointer;
+  /* iOS: native menu needs tap; keep appearance default */
+  -webkit-tap-highlight-color: rgba(190, 150, 82, 0.25);
+}
+
+.controls-error {
+  grid-column: 1 / -1;
+  margin: 0.15rem 0 0.1rem;
 }
 
 .controls-fields input,
@@ -451,6 +493,18 @@ body {
 
   .controls-fields {
     grid-template-columns: 1fr;
+  }
+
+  /* Easier taps; 16px+ avoids iOS zooming focused inputs */
+  .controls-fields input,
+  .controls-fields select,
+  .controls-touch-select {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .controls-field-hint {
+    font-size: 0.8rem;
   }
 
   .loot-tab-header {
