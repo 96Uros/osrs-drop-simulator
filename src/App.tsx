@@ -167,14 +167,16 @@ function runDropSimulation(
       const rollChance = clampDropRollProbability(drop.rarity);
 
       for (let roll = 0; roll < drop.rolls; roll += 1) {
-        if (isRareDrop && rareDropAlreadyHit) {
+        if (isRareDrop && rareDropAlreadyHit && !drop.independentRare) {
           continue;
         }
 
         if (Math.random() <= rollChance) {
           if (isRareDrop) {
             successfulRareRolls += 1;
-            rareDropAlreadyHit = true;
+            if (!drop.independentRare) {
+              rareDropAlreadyHit = true;
+            }
           }
           const amount = parseQuantityRange(drop.quantity);
           if (applyDropQuantityToTotals(totals, drop, amount)) {
@@ -340,7 +342,7 @@ function isPetDropName(name: string): boolean {
   const normalized = name.toLowerCase();
   return (
     /\bpet\b/.test(normalized) ||
-    /\b(jr\.?|cub|pup(py)?|kitten|chompy chick|guardian|snakeling|olmlet|hellpuppy|tangleroot|rocky|beaver|heron|phoenix|squirrel|noon|dusk)\b/.test(
+    /\b(jr\.?|cub|pup(py)?|kitten|chompy chick|guardian|snakeling|olmlet|hellpuppy|tangleroot|rocky|beaver|heron|phoenix|squirrel|noon|dusk|youngllef)\b/.test(
       normalized,
     )
   );

@@ -4,6 +4,8 @@ export type MonsterDrop = {
   quantity: string | null;
   rarity: number;
   rolls: number;
+  /** If true, this rare roll does not participate in the one-rare-per-kill cap (Gauntlet seeds/pet). */
+  independentRare?: boolean;
 };
 
 export type Monster = {
