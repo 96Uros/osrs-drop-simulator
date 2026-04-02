@@ -43,21 +43,10 @@ export type LuckPoint = {
   luckPercent: number;
 };
 
-export type ItemDropPrediction = {
-  monsterId: number;
-  monsterName: string;
-  itemName: string;
-  perKillChance: number;
-  expectedKills: number;
-  killsFor90Percent: number;
-};
+/** Where a monster lives in the encounter list (not the UI filter). */
+export type MonsterEncounterCategory = "raids" | "dt2" | "bosses";
 
-export type EncounterFilter =
-  | "all"
-  | "bosses"
-  | "raids"
-  | "raids-hard"
-  | "dt2"
-  | "dt2-hard";
+/** UI category: all encounters, raids only, or DT2 bosses only. Pair with hard mode for CM/HM/Awakened. */
+export type EncounterFilter = "all" | "raids" | "dt2";
 
 export type EncounterMode = "normal" | "hard";

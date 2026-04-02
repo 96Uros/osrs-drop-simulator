@@ -5,10 +5,10 @@ import type {
   DropResult,
   EncounterFilter,
   EncounterMode,
-  ItemDropPrediction,
   LuckPoint,
   Monster,
   MonsterDrop,
+  MonsterEncounterCategory,
   MonsterResponse,
   SimulationBatch,
 } from "./app/types";
@@ -266,9 +266,14 @@ function getMonsterLabel(monster: Monster): string {
 function getDisplayMonsterLabel(
   monster: Monster,
   filter: EncounterFilter,
+  categoryHardMode: boolean,
 ): string {
   const baseLabel = getMonsterLabel(monster);
-  if (filter === "dt2-hard" && getEncounterType(monster) === "dt2") {
+  if (
+    filter === "dt2" &&
+    categoryHardMode &&
+    getEncounterType(monster) === "dt2"
+  ) {
     return `Awakened ${baseLabel}`;
   }
   return baseLabel;
@@ -403,22 +408,23 @@ function getIconCandidates(drop: DropResult): string[] {
   return [wikiDetail, wikiPlain, FALLBACK_ICON];
 }
 
-function getEncounterType(monster: Monster): EncounterFilter {
+function getEncounterType(monster: Monster): MonsterEncounterCategory {
   if (monster.id <= -2000) return "raids";
   if (monster.id <= -1000) return "dt2";
   return "bosses";
 }
 
-function getFilterBaseType(
+function getSimulationMode(
   filter: EncounterFilter,
-): "all" | "bosses" | "raids" | "dt2" {
-  if (filter === "raids-hard") return "raids";
-  if (filter === "dt2-hard") return "dt2";
-  return filter;
-}
-
-function getModeFromFilter(filter: EncounterFilter): EncounterMode {
-  return filter.endsWith("-hard") ? "hard" : "normal";
+  categoryHardMode: boolean,
+): EncounterMode {
+  if (
+    categoryHardMode &&
+    (filter === "raids" || filter === "dt2")
+  ) {
+    return "hard";
+  }
+  return "normal";
 }
 
 function getDropsForMode(monster: Monster, mode: EncounterMode): MonsterDrop[] {
@@ -428,9 +434,17 @@ function getDropsForMode(monster: Monster, mode: EncounterMode): MonsterDrop[] {
   if (encounterType !== "raids" && encounterType !== "dt2")
     return monster.drops;
 
-  const uniqueBoost = encounterType === "raids" ? 1.25 : 1.15;
+  const uniqueBoost = encounterType === "raids" ? 1.25 : 3;
   return monster.drops.map((drop) => {
-    if (drop.rarity > 0.02) return drop;
+    if (drop.rarity > RARE_DROP_THRESHOLD) return drop;
+    // Awakened DT2: ~3x unique rate (wiki); skip rolls at exactly the rare threshold so
+    // standard ~2% supply drops are not tripled alongside the unique table.
+    if (
+      encounterType === "dt2" &&
+      drop.rarity >= RARE_DROP_THRESHOLD
+    ) {
+      return drop;
+    }
     return {
       ...drop,
       rarity: Math.min(1, drop.rarity * uniqueBoost),
@@ -473,25 +487,43 @@ function getRaidUniqueModel(
   }
 
   if (monster.id === -2002) {
-    const teamModifier = 1 + (clampNumber(tobTeamSize, 1, 5) - 1) * 0.12;
-    const deathlessModifier = tobDeathless ? 1.12 : 1;
-    const hardModifier = mode === "hard" ? 1.15 : 1;
+    const teamSize = clampNumber(tobTeamSize, 1, 5);
+    // Monumental chest (wiki): team purple ~1/9.1 (normal) or ~1/7.7 (hard), same for any team size.
+    // Deaths lower the rate (~12% boost when deathless vs with deaths, matching prior sim tuning).
+    // Personal loot: one player receives the unique — approximate with equal split across team size.
+    const teamPurpleChance =
+      (mode === "hard" ? 1 / 7.7 : 1 / 9.1) * (tobDeathless ? 1 : 1 / 1.12);
     const uniqueChance = clampNumber(
-      (1 / 9) * teamModifier * deathlessModifier * hardModifier,
+      teamPurpleChance / teamSize,
       0,
       0.45,
     );
+    // Monumental chest (OSRS wiki): among uniques, rarities are 1/x; P ∝ 1/x.
+    // Normal — hilt 1/2.375, weapons/justiciar 1/9.5 each, scythe 1/19 → weights 8:2:2:2:2:2:1 (sum 19).
+    // Hard — hilt 1/2.571, others 1/9, scythe 1/18 → weights 7:2:2:2:2:2:1 (sum 18).
+    const uniqueWeights =
+      mode === "hard"
+        ? [
+            { name: "Avernic defender hilt", weight: 7 },
+            { name: "Ghrazi rapier", weight: 2 },
+            { name: "Sanguinesti staff (uncharged)", weight: 2 },
+            { name: "Justiciar faceguard", weight: 2 },
+            { name: "Justiciar chestguard", weight: 2 },
+            { name: "Justiciar legguards", weight: 2 },
+            { name: "Scythe of vitur (uncharged)", weight: 1 },
+          ]
+        : [
+            { name: "Avernic defender hilt", weight: 8 },
+            { name: "Ghrazi rapier", weight: 2 },
+            { name: "Sanguinesti staff (uncharged)", weight: 2 },
+            { name: "Justiciar faceguard", weight: 2 },
+            { name: "Justiciar chestguard", weight: 2 },
+            { name: "Justiciar legguards", weight: 2 },
+            { name: "Scythe of vitur (uncharged)", weight: 1 },
+          ];
     return {
       uniqueChance,
-      uniqueWeights: [
-        { name: "Scythe of vitur (uncharged)", weight: 3.2 },
-        { name: "Ghrazi rapier", weight: 4 },
-        { name: "Sanguinesti staff (uncharged)", weight: 4 },
-        { name: "Avernic defender hilt", weight: 6 },
-        { name: "Justiciar faceguard", weight: 3.3 },
-        { name: "Justiciar chestguard", weight: 3.3 },
-        { name: "Justiciar legguards", weight: 3.3 },
-      ],
+      uniqueWeights,
     };
   }
 
@@ -518,76 +550,13 @@ function getRaidUniqueModel(
   return null;
 }
 
-function calculatePerKillChance(rarity: number, rolls: number): number {
-  if (rarity <= 0 || rolls <= 0) return 0;
-  return 1 - (1 - rarity) ** rolls;
-}
-
-function calculateItemPredictions(
-  monsters: Monster[],
-  itemQuery: string,
-): ItemDropPrediction[] {
-  const query = itemQuery.trim().toLowerCase();
-  if (!query) return [];
-
-  const predictions: ItemDropPrediction[] = [];
-
-  for (const monster of monsters) {
-    const matchingDrops = monster.drops.filter((drop) =>
-      drop.name.toLowerCase().includes(query),
-    );
-    if (matchingDrops.length === 0) continue;
-
-    const groupedByItem = new Map<
-      string,
-      { itemName: string; perKillMissChance: number }
-    >();
-
-    for (const drop of matchingDrops) {
-      const key = drop.name.toLowerCase();
-      const chanceThisEntry = calculatePerKillChance(drop.rarity, drop.rolls);
-      const existing = groupedByItem.get(key);
-
-      if (!existing) {
-        groupedByItem.set(key, {
-          itemName: drop.name,
-          perKillMissChance: 1 - chanceThisEntry,
-        });
-      } else {
-        existing.perKillMissChance *= 1 - chanceThisEntry;
-      }
-    }
-
-    for (const grouped of groupedByItem.values()) {
-      const perKillChance = 1 - grouped.perKillMissChance;
-      if (perKillChance <= 0) continue;
-
-      const expectedKills = 1 / perKillChance;
-      const killsFor90Percent = Math.log(0.1) / Math.log(1 - perKillChance);
-
-      predictions.push({
-        monsterId: monster.id,
-        monsterName: getMonsterLabel(monster),
-        itemName: grouped.itemName,
-        perKillChance,
-        expectedKills,
-        killsFor90Percent,
-      });
-    }
-  }
-
-  return predictions
-    .sort((a, b) => a.expectedKills - b.expectedKills)
-    .slice(0, 20);
-}
-
 function App() {
   const [monsters, setMonsters] = useState<Monster[]>([]);
   const [selectedMonsterId, setSelectedMonsterId] = useState<string>("");
   const [encounterFilter, setEncounterFilter] =
     useState<EncounterFilter>("all");
+  const [categoryHardMode, setCategoryHardMode] = useState(false);
   const [monsterQuery, setMonsterQuery] = useState("");
-  const [itemSearchQuery, setItemSearchQuery] = useState("");
   const [killCountInput, setKillCountInput] = useState("1");
   const [autoKillEnabled, setAutoKillEnabled] = useState(false);
   const [coxPointsInput, setCoxPointsInput] = useState("30000");
@@ -738,8 +707,12 @@ function App() {
   );
   const selectedMonsterLabel = useMemo(() => {
     if (!selectedMonster) return "";
-    return getDisplayMonsterLabel(selectedMonster, encounterFilter);
-  }, [encounterFilter, selectedMonster]);
+    return getDisplayMonsterLabel(
+      selectedMonster,
+      encounterFilter,
+      categoryHardMode,
+    );
+  }, [categoryHardMode, encounterFilter, selectedMonster]);
 
   useEffect(() => {
     if (!selectedMonster) return;
@@ -747,11 +720,12 @@ function App() {
   }, [selectedMonster]);
 
   const filteredMonsters = useMemo(() => {
-    const baseType = getFilterBaseType(encounterFilter);
     const byType =
-      baseType === "all"
+      encounterFilter === "all"
         ? monsters
-        : monsters.filter((monster) => getEncounterType(monster) === baseType);
+        : monsters.filter(
+            (monster) => getEncounterType(monster) === encounterFilter,
+          );
 
     const query = monsterQuery.trim().toLowerCase();
     if (!query) return byType;
@@ -761,11 +735,6 @@ function App() {
       return label.includes(query);
     });
   }, [encounterFilter, monsters, monsterQuery]);
-
-  const itemPredictions = useMemo(
-    () => calculateItemPredictions(monsters, itemSearchQuery),
-    [itemSearchQuery, monsters],
-  );
 
   const totalGpValue = useMemo(() => {
     return results.reduce((sum, drop) => {
@@ -804,7 +773,7 @@ function App() {
   const applyBatch = useCallback(
     (kills: number) => {
       if (!selectedMonster) return;
-      const mode = getModeFromFilter(encounterFilter);
+      const mode = getSimulationMode(encounterFilter, categoryHardMode);
       const modeDrops = getDropsForMode(selectedMonster, mode);
       const raidUniqueModel = getRaidUniqueModel(
         selectedMonster,
@@ -840,6 +809,7 @@ function App() {
       });
     },
     [
+      categoryHardMode,
       coxPointsInput,
       encounterFilter,
       selectedMonster,
@@ -1015,7 +985,7 @@ function App() {
             </div>
 
             <div className="controls-fields">
-              <label htmlFor="encounter-filter">Encounter Type</label>
+              <label htmlFor="encounter-filter">Encounter type</label>
               <select
                 id="encounter-filter"
                 value={encounterFilter}
@@ -1023,13 +993,26 @@ function App() {
                   setEncounterFilter(event.target.value as EncounterFilter)
                 }
               >
-                <option value="all">All</option>
-                <option value="bosses">Bosses</option>
+                <option value="all">All encounters (incl. bosses)</option>
                 <option value="raids">Raids</option>
-                <option value="raids-hard">Raids (Hard)</option>
-                <option value="dt2">DT2 Bosses</option>
-                <option value="dt2-hard">DT2 Bosses (Hard)</option>
+                <option value="dt2">DT2 bosses</option>
               </select>
+
+              {(encounterFilter === "raids" || encounterFilter === "dt2") && (
+                <>
+                  <label htmlFor="category-mode">Mode</label>
+                  <select
+                    id="category-mode"
+                    value={categoryHardMode ? "hard" : "normal"}
+                    onChange={(event) =>
+                      setCategoryHardMode(event.target.value === "hard")
+                    }
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="hard">Hard (CM / HM / awakened)</option>
+                  </select>
+                </>
+              )}
 
               <label htmlFor="monster">Monster/Raid or Boss</label>
               <input
@@ -1056,6 +1039,7 @@ function App() {
                       getDisplayMonsterLabel(
                         monster,
                         encounterFilter,
+                        categoryHardMode,
                       ).toLowerCase() === value.toLowerCase(),
                   );
                   setSelectedMonsterId(exactMatch ? String(exactMatch.id) : "");
@@ -1067,7 +1051,11 @@ function App() {
                 {filteredMonsters.map((monster) => (
                   <option
                     key={monster.id}
-                    value={getDisplayMonsterLabel(monster, encounterFilter)}
+                    value={getDisplayMonsterLabel(
+                      monster,
+                      encounterFilter,
+                      categoryHardMode,
+                    )}
                   />
                 ))}
               </datalist>
@@ -1139,6 +1127,7 @@ function App() {
                             setTobTeamSizeInput(event.target.value)
                           }
                           placeholder="e.g. 4"
+                          title="Team purple rate is ~fixed; your simulated share is divided by team size (equal split)."
                         />
                         <label htmlFor="tob-deathless">ToB deathless run</label>
                         <select
@@ -1165,7 +1154,7 @@ function App() {
                 disabled={isLoadingMonsters || !selectedMonster}
               >
                 {selectedMonster
-                  ? `Kill ${getDisplayMonsterLabel(selectedMonster, encounterFilter)} x${killCountInput || "0"}`
+                  ? `Kill ${getDisplayMonsterLabel(selectedMonster, encounterFilter, categoryHardMode)} x${killCountInput || "0"}`
                   : "Select a monster first"}
               </button>
 
@@ -1189,58 +1178,6 @@ function App() {
             </div>
           </div>
 
-          <div className="predictor">
-            <label htmlFor="item-search">
-              Item Hunt Predictor (not the most accurate, but a good estimate)
-            </label>
-            <input
-              id="item-search"
-              type="text"
-              value={itemSearchQuery}
-              onChange={(event) => setItemSearchQuery(event.target.value)}
-              placeholder="Type item name (e.g. abyssal whip, tanzanite fang)..."
-            />
-            {itemSearchQuery.trim() && (
-              <div className="predictor-results">
-                {itemPredictions.length === 0 ? (
-                  <p className="empty">
-                    No matching item drops found for this query.
-                  </p>
-                ) : (
-                  itemPredictions.map((prediction) => (
-                    <div
-                      className="predictor-row"
-                      key={`${prediction.monsterId}-${prediction.itemName}`}
-                    >
-                      <span>
-                        <strong>{prediction.monsterName}</strong> drops{" "}
-                        <em>{prediction.itemName}</em>
-                      </span>
-                      <span>
-                        Avg:{" "}
-                        {Math.ceil(prediction.expectedKills).toLocaleString(
-                          "en-US",
-                        )}{" "}
-                        kills
-                      </span>
-                      <span>
-                        90%:{" "}
-                        {Math.ceil(prediction.killsFor90Percent).toLocaleString(
-                          "en-US",
-                        )}{" "}
-                        kills
-                      </span>
-                      <span>
-                        Chance/kill:{" "}
-                        {(prediction.perKillChance * 100).toFixed(3)}%
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
           {error && <p className="error">{error}</p>}
 
           <div
@@ -1254,7 +1191,7 @@ function App() {
               <h3 className="loot-tab-title">
                 Loot Tab
                 {selectedMonster
-                  ? ` | ${getDisplayMonsterLabel(selectedMonster, encounterFilter)} x${totalKills.toLocaleString("en-US")}`
+                  ? ` | ${getDisplayMonsterLabel(selectedMonster, encounterFilter, categoryHardMode)} x${totalKills.toLocaleString("en-US")}`
                   : ""}
               </h3>
               <div className="loot-tab-values">
