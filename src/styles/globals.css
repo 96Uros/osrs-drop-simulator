@@ -243,13 +243,6 @@ body {
   border-radius: 18px;
   pointer-events: none;
   z-index: -1;
-  background: radial-gradient(
-    circle at 50% 30%,
-    rgba(255, 235, 195, 0.18) 0%,
-    rgba(255, 210, 120, 0.10) 42%,
-    rgba(0, 0, 0, 0) 70%
-  );
-  filter: blur(2px);
 }
 
 .panel-header p {
@@ -354,7 +347,6 @@ body {
 .controls select:focus {
   outline: none;
   border-color: #be9652;
-  box-shadow: 0 0 0 2px rgba(190, 150, 82, 0.22);
 }
 
 .controls button {
