@@ -14,6 +14,7 @@ import type {
 } from "./app/types";
 import {
   ACCOUNT_STORAGE_KEY,
+  APP_RATING_STORAGE_KEY,
   CUSTOM_ITEM_PRICES,
   EXTREME_RARE_THRESHOLD,
   FALLBACK_ICON,
@@ -23,11 +24,17 @@ import {
   MONSTER_URLS,
   RARE_DROP_THRESHOLD,
   RUNELITE_ICON_URL,
+  SITE_LAST_UPDATED,
   WIKI_IMAGE_BASE_URL,
   WIKI_LATEST_PRICE_URL,
   WIKI_MAPPING_URL,
 } from "./app/constants";
 import { CUSTOM_ENCOUNTERS } from "./app/custom-encounters";
+import {
+  fetchGlobalRatingStats,
+  submitGlobalRating,
+  type GlobalRatingStats,
+} from "./app/rating-stats";
 
 declare global {
   interface Window {
@@ -336,6 +343,49 @@ function loadAccountStore(): AccountStatsStore {
   } catch {
     return {};
   }
+}
+
+type AppRatingJson = {
+  stars: number;
+  updatedAt: string;
+  submitted: boolean;
+  submittedAt?: string;
+  /** @deprecated migrated to submitted */
+  timesRated?: number;
+};
+
+type AppRatingState = {
+  stars: number;
+  submitted: boolean;
+};
+
+const APP_RATING_MAX = 5;
+
+function loadAppRatingState(): AppRatingState {
+  try {
+    const raw = localStorage.getItem(APP_RATING_STORAGE_KEY);
+    if (!raw) return { stars: 0, submitted: false };
+    const parsed = JSON.parse(raw) as AppRatingJson;
+    if (!parsed || typeof parsed.stars !== "number") {
+      return { stars: 0, submitted: false };
+    }
+    const stars = clampNumber(Math.round(parsed.stars), 0, APP_RATING_MAX);
+    const submitted =
+      parsed.submitted === true || (stars > 0 && parsed.submitted !== false);
+    return { stars, submitted };
+  } catch {
+    return { stars: 0, submitted: false };
+  }
+}
+
+function persistSubmittedRating(stars: number): void {
+  const payload: AppRatingJson = {
+    stars: clampNumber(Math.round(stars), 1, APP_RATING_MAX),
+    updatedAt: new Date().toISOString(),
+    submitted: true,
+    submittedAt: new Date().toISOString(),
+  };
+  localStorage.setItem(APP_RATING_STORAGE_KEY, JSON.stringify(payload));
 }
 
 function isPetDropName(name: string): boolean {
@@ -820,7 +870,18 @@ function App() {
     Partial<Record<KillFormField, boolean>>
   >({});
   const [kofiFooterHtml, setKofiFooterHtml] = useState("");
+  const [appRating, setAppRating] = useState(() => loadAppRatingState());
+  const [appRatingHover, setAppRatingHover] = useState(0);
+  const [globalRatingStats, setGlobalRatingStats] =
+    useState<GlobalRatingStats | null>(null);
+  const appRatingSubmitLock = useRef(false);
   const inFlightItemValues = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    void fetchGlobalRatingStats().then((stats) =>
+      setGlobalRatingStats(stats ?? { averageStars: 0, voteCount: 0 }),
+    );
+  }, []);
 
   useEffect(() => {
     const SCRIPT_ID = "kofi-widget-2";
@@ -1722,9 +1783,91 @@ function App() {
               dangerouslySetInnerHTML={{ __html: kofiFooterHtml }}
             />
           ) : null}
+          <div
+            className="footer-rating"
+            role="group"
+            aria-label="Rate this simulator"
+            onMouseLeave={() => {
+              if (!appRating.submitted) setAppRatingHover(0);
+            }}
+          >
+            <span className="footer-rating-label">Rate</span>
+            <div className="footer-stars">
+              {Array.from({ length: APP_RATING_MAX }, (_, index) => {
+                const value = index + 1;
+                const display =
+                  !appRating.submitted && appRatingHover > 0
+                    ? appRatingHover
+                    : appRating.stars;
+                const filled = value <= display;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={appRating.submitted}
+                    className={
+                      filled ? "footer-star footer-star--filled" : "footer-star"
+                    }
+                    aria-label={`${value} out of ${APP_RATING_MAX} stars`}
+                    onMouseEnter={() => {
+                      if (!appRating.submitted) setAppRatingHover(value);
+                    }}
+                    onClick={() => {
+                      if (appRating.submitted || appRatingSubmitLock.current) {
+                        return;
+                      }
+                      appRatingSubmitLock.current = true;
+                      persistSubmittedRating(value);
+                      setAppRating({ stars: value, submitted: true });
+                      setAppRatingHover(0);
+                      void submitGlobalRating(value)
+                        .then(() => fetchGlobalRatingStats())
+                        .then((stats) =>
+                          setGlobalRatingStats(
+                            stats ?? { averageStars: 0, voteCount: 0 },
+                          ),
+                        )
+                        .finally(() => {
+                          appRatingSubmitLock.current = false;
+                        });
+                    }}
+                  >
+                    ★
+                  </button>
+                );
+              })}
+            </div>
+            {globalRatingStats ? (
+              <p className="footer-rating-global">
+                {globalRatingStats.voteCount > 0 ? (
+                  <>
+                    Average rating:{" "}
+                    <strong>
+                      {globalRatingStats.averageStars.toFixed(1)} /{" "}
+                      {APP_RATING_MAX}
+                    </strong>
+                    {" · "}
+                    {globalRatingStats.voteCount}{" "}
+                    {globalRatingStats.voteCount === 1 ? "vote" : "votes"}
+                  </>
+                ) : (
+                  "No global ratings yet."
+                )}
+              </p>
+            ) : null}
+            {appRating.submitted ? (
+              <p className="footer-rating-count">
+                You already rated on this device ({appRating.stars}/
+                {APP_RATING_MAX}).
+              </p>
+            ) : null}
+          </div>
           <div className="footer-copy">
             <p className="footer-credit">
               Created by <span className="footer-credit-ign">SoP crVek</span>
+            </p>
+            <p className="footer-last-updated">
+              Last updated {SITE_LAST_UPDATED}
             </p>
             <p className="footer-attrib">
               Monster, drop, and GE data from the{" "}
