@@ -66,4 +66,4 @@ This is an **independent fan project**. It is not affiliated with, endorsed by, 
 
 ---
 
-*Created by **SoP crVek** — enjoy the grind without the supply cost.*
+*Enjoy the grind without the supply cost.*
