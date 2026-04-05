@@ -1,5 +1,8 @@
+/**
+ * Monster DB mirrors (tried in order). Optional: copy `monsters-complete.json` into
+ * `public/` and prepend `"/monsters-complete.json"` for offline / fewer CDN hops.
+ */
 export const MONSTER_URLS = [
-  "/monsters-complete.json",
   "https://raw.githubusercontent.com/osrsbox/osrsbox-db/master/docs/monsters-complete.json",
   "https://cdn.jsdelivr.net/gh/osrsbox/osrsbox-db@master/docs/monsters-complete.json",
 ];
