@@ -18,8 +18,14 @@ export const RUNELITE_ICON_URL = "https://static.runelite.net/cache/item/icon";
 /** Month/year of last full site refresh (footer). */
 export const SITE_LAST_UPDATED = "03/2026";
 
+/**
+ * Footer "Visits" value. Set a number to show that count (no per-browser tally).
+ * Keep `null` to use `public/visit-stats.json` if it defines `"visits"`, else auto localStorage.
+ */
+export const SITE_VISITS_OVERRIDE: number | null = null;
+
 export const ACCOUNT_STORAGE_KEY = "osrs-drop-sim-account-stats-v1";
-export const APP_RATING_STORAGE_KEY = "osrs-drop-sim-app-rating-v1";
+export const VISIT_STATS_STORAGE_KEY = "osrs-drop-sim-visit-stats-v1";
 export const RARE_DROP_THRESHOLD = 0.02;
 export const EXTREME_RARE_THRESHOLD = 0.001;
 export const MAX_KILL_INPUT = 15_000;
