@@ -24,17 +24,11 @@ import {
   RARE_DROP_THRESHOLD,
   RUNELITE_ICON_URL,
   SITE_LAST_UPDATED,
-  SITE_VISITS_OVERRIDE,
   WIKI_IMAGE_BASE_URL,
   WIKI_LATEST_PRICE_URL,
   WIKI_MAPPING_URL,
 } from "./app/constants";
 import { CUSTOM_ENCOUNTERS } from "./app/custom-encounters";
-import {
-  fetchConfiguredVisitCount,
-  recordBrowserVisit,
-} from "./app/visit-stats";
-
 declare global {
   interface Window {
     kofiwidget2?: {
@@ -826,26 +820,7 @@ function App() {
     Partial<Record<KillFormField, boolean>>
   >({});
   const [kofiFooterHtml, setKofiFooterHtml] = useState("");
-  const [visitCount, setVisitCount] = useState<number | null>(null);
   const inFlightItemValues = useRef<Set<number>>(new Set());
-
-  useEffect(() => {
-    void (async () => {
-      if (
-        SITE_VISITS_OVERRIDE !== null &&
-        Number.isFinite(SITE_VISITS_OVERRIDE)
-      ) {
-        setVisitCount(Math.max(0, Math.floor(SITE_VISITS_OVERRIDE)));
-        return;
-      }
-      const fromFile = await fetchConfiguredVisitCount();
-      if (fromFile !== null) {
-        setVisitCount(fromFile);
-        return;
-      }
-      setVisitCount(recordBrowserVisit());
-    })();
-  }, []);
 
   useEffect(() => {
     const SCRIPT_ID = "kofi-widget-2";
@@ -1754,11 +1729,6 @@ function App() {
             <p className="footer-last-updated">
               Last updated {SITE_LAST_UPDATED}
             </p>
-            {visitCount != null ? (
-              <p className="footer-visits">
-                Visits: {visitCount.toLocaleString("en-US")}
-              </p>
-            ) : null}
             <p className="footer-attrib">
               Monster, drop, and GE data from the{" "}
               <a
